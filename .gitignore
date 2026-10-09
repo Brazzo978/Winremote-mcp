@@ -1,0 +1,15 @@
+/target/
+/dist/
+/.local/
+**/connection.json
+**/connection-*.json
+*.pem
+*.key
+*.log
+__pycache__/
+
+**/.winremote-*.tmp
+
+.env
+.env.*
+*.bak

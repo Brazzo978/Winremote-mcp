@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "winremote": {
+      "command": "C:\\Tools\\Winremote-mcp\\winremote-mcp.exe",
+      "args": [
+        "mcp",
+        "--connection",
+        "C:\\Users\\YOUR_USER\\AppData\\Local\\Winremote-mcp\\connection.json"
+      ]
+    }
+  }
+}

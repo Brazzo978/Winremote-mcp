@@ -1,0 +1,8 @@
+# Replace YOUR_USER and the executable path with absolute paths on the AGENT PC.
+# Merge this table into ~/.codex/config.toml; preserve existing configuration.
+[mcp_servers.winremote]
+command = 'C:\Tools\Winremote-mcp\winremote-mcp.exe'
+args = ["mcp", "--connection", 'C:\Users\YOUR_USER\AppData\Local\Winremote-mcp\connection.json']
+startup_timeout_sec = 10
+tool_timeout_sec = 3600
+enabled = true
