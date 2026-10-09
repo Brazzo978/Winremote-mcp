@@ -324,8 +324,10 @@ def main():
                 def execute(script, timeout=10, failed=False):
                     return call("powershell_execute", {"script": script, "cwd": str(work),
                         "timeout_secs": timeout}, failed=failed)
-                output = execute("Write-Output 'ciao Ã¨'; Write-Output (Get-Location).Path # comment")
-                assert "ciao Ã¨" in output["stdout"] and str(work) in output["stdout"]
+                output = execute("Write-Output 'ciao \u00e8'; Write-Output (Get-Location).ProviderPath # comment")
+                assert "ciao \u00e8" in output["stdout"], repr(output["stdout"])
+                reported_cwd = Path(output["stdout"].splitlines()[-1])
+                assert reported_cwd.samefile(work), (str(reported_cwd), str(work))
                 assert execute("throw 'intentional test error'", failed=True)["exit_code"] == 1
                 assert execute("cmd.exe /c exit 7", failed=True)["exit_code"] == 7
                 overflow = execute("[Console]::Out.Write(('x' * 1100000)); [Console]::Error.Write(('y' * 1100000))")
