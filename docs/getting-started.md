@@ -30,7 +30,7 @@ codex mcp add winremote -- 'C:\Tools\Winremote-mcp\winremote-mcp.exe' mcp --conn
 codex mcp list
 ~~~
 
-Il comando CLI espande la variabile d'ambiente in PowerShell prima di salvare il percorso. Usa **una** delle due modalità di registrazione per evitare una voce duplicata. La [documentazione ufficiale OpenAI su MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) descrive i server stdio, config.toml e codex mcp add.
+Il comando CLI espande la variabile d'ambiente in PowerShell prima di salvare il percorso. Dopo la registrazione CLI, imposta anche tool_timeout_sec = 3600 nella tabella winremote del config.toml, come nell'esempio sopra, per consentire operazioni e trasferimenti più lunghi del timeout predefinito. Usa **una** delle due modalità di registrazione per evitare una voce duplicata. La [documentazione ufficiale OpenAI su MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) descrive i server stdio, config.toml e codex mcp add.
 
 ## 3. Connetti l'agente e verifica
 

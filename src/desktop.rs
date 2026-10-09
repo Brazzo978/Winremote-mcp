@@ -52,7 +52,7 @@ fn scaled_dimensions(raw_width: u32, raw_height: u32, max_width: u32) -> Result<
 
 fn bgra_to_rgb(input: &[u8]) -> Vec<u8> {
     let mut rgb = Vec::with_capacity(input.len() / 4 * 3);
-    for pixel in input.chunks_exact(4) {
+    for pixel in input.as_chunks::<4>().0 {
         rgb.extend_from_slice(&[pixel[2], pixel[1], pixel[0]]);
     }
     rgb

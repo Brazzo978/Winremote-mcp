@@ -1,6 +1,6 @@
 # Verifiche della versione 0.5.0
 
-Distribuzione verificata: Windows x64. Le prove locali del 7 ottobre 2026 hanno usato la toolchain Rust gnullvm con LLVM-MinGW e il binario release. I risultati di CI MSVC sono consultabili nella [pagina Actions](https://github.com/Brazzo978/Winremote-mcp/actions).
+Distribuzione verificata: Windows x64. Le prove locali del 9 ottobre 2026 hanno usato la toolchain Rust gnullvm con LLVM-MinGW e il binario release. I risultati di CI MSVC sono consultabili nella [pagina Actions](https://github.com/Brazzo978/Winremote-mcp/actions).
 
 ## Verifiche locali completate
 
@@ -35,8 +35,8 @@ Inviti, connessioni, inventari, nomi dei PC e screenshot privati delle prove non
 
 ## Binario iniziale della release
 
-- Dimensione: 7.980.032 byte.
-- SHA-256: `9d798ae34bdf3616c74c7f975502ac5c228ef80acb0c67fb95a1aef67f8389f7`.
+- Dimensione: 7.982.592 byte.
+- SHA-256: `736eb1c103860513148c4bec3da1b3d2cfb53dac091ecc89985a97055757bcab`.
 - Toolchain: `stable-x86_64-pc-windows-gnullvm`, LLVM-MinGW 20260922.
 - Import: DLL di sistema Windows/UCRT, incluse `user32.dll` e `gdi32.dll`; nessuna DLL del compilatore aggiuntiva.
 
