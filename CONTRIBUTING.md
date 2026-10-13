@@ -37,3 +37,5 @@ Non allegare inviti, token, `connection.json`, chiavi o certificati di sessione,
 Prima di pubblicare una release verifica che la versione in `Cargo.toml`, il tag e i documenti coincidano e che la CI del commit sia riuscita. Compila il binario, esegui le verifiche pertinenti, crea il pacchetto con licenza e guide e calcola i checksum SHA-256 dei file distribuiti.
 
 La prima release contiene il binario gnullvm già verificato localmente. Gli artifact MSVC delle Actions sono compilazioni separate: non sostituirli a un file della release mantenendo il vecchio checksum.
+
+Per distribuire il binario Windows 7 e successivi usa `scripts/Build-Win7.ps1` e la [guida di compatibilità](docs/compatibility.md). La compilazione standard resta destinata a Windows moderno. Non dichiarare una prova su Windows legacy senza aver eseguito il binario su quel sistema.

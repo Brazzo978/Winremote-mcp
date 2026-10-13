@@ -1,6 +1,6 @@
 # Guida rapida
 
-Winremote-mcp collega due PC Windows: il **PC controllato**, su cui lavori a distanza, e il **PC dell'agente**, su cui gira Codex. Copia **lo stesso EXE** su entrambi, per esempio in C:\Tools\Winremote-mcp\winremote-mcp.exe. L'EXE portabile non richiede Rust sulle macchine che lo eseguono. Le due macchine devono potersi raggiungere in rete; sul PC controllato serve una sessione Windows interattiva per screenshot e input.
+Winremote-mcp collega due PC Windows: il **PC controllato**, su cui lavori a distanza, e il **PC dell'agente**, su cui gira Codex. Copia **lo stesso EXE** su entrambi, per esempio in C:\Tools\Winremote-mcp\winremote-mcp.exe. L'EXE portabile della 0.5.1 è destinato a Windows 7 x64 e successivi e non richiede Rust sulle macchine che lo eseguono. Usa il file della release, compilato con il target Windows 7, per i sistemi più vecchi. Le due macchine devono potersi raggiungere in rete; sul PC controllato serve una sessione Windows interattiva per screenshot e input.
 
 ## 1. Avvia il PC controllato
 
@@ -34,9 +34,9 @@ Il comando CLI espande la variabile d'ambiente in PowerShell prima di salvare il
 
 ## 3. Connetti l'agente e verifica
 
-Fornisci all'agente l'invito mostrato sul PC controllato e chiedigli di chiamare bridge_connect con l'argomento invitation. L'adattatore MCP salva sul PC dell'agente una connessione temporanea nel file configurato. Chiedi quindi windows_info e desktop_screenshot: il primo verifica la connessione, il secondo mostra il desktop visibile della sessione del bridge. Un prompt iniziale è:
+Fornisci all'agente l'invito mostrato sul PC controllato e chiedigli di chiamare bridge_connect con l'argomento invitation. L'adattatore MCP salva sul PC dell'agente una connessione temporanea nel file configurato. Chiedi quindi windows_info per verificare la connessione e le capacità. Se desktop_supported è true, desktop_screenshot mostra il desktop visibile della sessione del bridge; su Windows precedenti a 10/Server 2016 screenshot e input sono disabilitati. Un prompt iniziale è:
 
-> Usa bridge_connect con l'invito che ti fornisco. Poi esegui windows_info e desktop_screenshot e dimmi cosa riesci a vedere prima di agire.
+> Usa bridge_connect con l'invito che ti fornisco. Poi esegui windows_info, verifica le capacità e acquisisci desktop_screenshot soltanto se desktop_supported è true.
 
 L'adattatore espone **18 strumenti** per informazioni Windows, screenshot e input desktop, PowerShell, file e cartelle. Per file grandi usa file_upload e file_download (fino a **10 GiB** per file): local_path si riferisce al PC dell'agente, remote_path al PC controllato. Usa percorsi assoluti, crea prima le cartelle di destinazione e imposta overwrite: true soltanto se vuoi sostituire un file esistente. Per i dettagli degli strumenti vedi il [README](../README.md).
 

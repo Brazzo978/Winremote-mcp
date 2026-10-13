@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1 — compatibilità Windows legacy
+
+- Build dedicata Windows 7 x64 con std Rust ricompilata e runtime C statico.
+- Rimosso l'import diretto di SetThreadDpiAwarenessContext che impediva l'avvio su Server 2012 R2.
+- Desktop disabilitato quando l'API non è disponibile; comandi e file restano utilizzabili.
+- Capacità desktop e motivazione esplicite in windows_info.
+- Fallback DPI V1 per Windows 10 1607 e ripristino del contesto del thread.
+- Firewall COM compatibile con Windows 7, con gli stessi limiti LAN e rimozione all'arresto.
+- CI separata per la build legacy e controllo degli import PE.
+
+La prova sul sistema Windows 7/Server 2012 R2 effettivo è ancora da completare; vedi [compatibilità](docs/compatibility.md).
+
 ## 0.5.0 — prima distribuzione pubblica
 
 Bridge Windows x64 portabile e client MCP stdio nello stesso EXE, con 18 strumenti.

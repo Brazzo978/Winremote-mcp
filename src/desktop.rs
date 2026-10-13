@@ -83,6 +83,19 @@ fn encode_png(rgb: &[u8], width: u32, height: u32) -> Result<Vec<u8>> {
     Ok(output.0)
 }
 
+pub const UNAVAILABLE_REASON: &str = "Desktop screenshots and input require Windows 10 version 1607 or Windows Server 2016 and later; PowerShell and file tools remain available.";
+
+pub fn is_supported() -> bool {
+    #[cfg(windows)]
+    {
+        windows::dpi_setter().is_some()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 #[cfg(windows)]
 pub(crate) mod windows {
     use super::*;
@@ -99,6 +112,7 @@ pub(crate) mod windows {
             BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, HALFTONE, HBITMAP, HDC, HGDIOBJ, SRCCOPY,
         },
         System::{
+            LibraryLoader::{GetModuleHandleW, GetProcAddress},
             RemoteDesktop::ProcessIdToSessionId,
             StationsAndDesktops::{
                 CloseDesktop, GetThreadDesktop, GetUserObjectInformationW, OpenInputDesktop,
@@ -108,7 +122,7 @@ pub(crate) mod windows {
         },
         UI::{
             HiDpi::{
-                SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT,
+                DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
                 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
             },
             WindowsAndMessaging::{
@@ -118,25 +132,57 @@ pub(crate) mod windows {
         },
     };
 
-    pub(crate) struct DpiGuard(DPI_AWARENESS_CONTEXT);
+    type DpiSetter = unsafe extern "system" fn(DPI_AWARENESS_CONTEXT) -> DPI_AWARENESS_CONTEXT;
+
+    pub(crate) fn dpi_setter() -> Option<DpiSetter> {
+        static SETTER: std::sync::OnceLock<Option<DpiSetter>> = std::sync::OnceLock::new();
+        *SETTER.get_or_init(|| {
+            let dll: Vec<u16> = "user32.dll".encode_utf16().chain(Some(0)).collect();
+            // USER32 is already loaded by the desktop imports. Never search disk for a DLL.
+            let module = unsafe { GetModuleHandleW(dll.as_ptr()) };
+            if module.is_null() {
+                return None;
+            }
+            let proc =
+                unsafe { GetProcAddress(module, c"SetThreadDpiAwarenessContext".as_ptr().cast()) }?;
+            // The name and system ABI match the documented USER32 entry point.
+            Some(unsafe {
+                std::mem::transmute::<unsafe extern "system" fn() -> isize, DpiSetter>(proc)
+            })
+        })
+    }
+
+    pub(crate) struct DpiGuard {
+        previous: DPI_AWARENESS_CONTEXT,
+        setter: DpiSetter,
+    }
     impl DpiGuard {
         pub(crate) fn enter() -> Result<Self> {
-            let old =
-                unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+            Self::enter_with(dpi_setter())
+        }
+
+        fn enter_with(setter: Option<DpiSetter>) -> Result<Self> {
+            let setter = setter.ok_or_else(|| anyhow::anyhow!(UNAVAILABLE_REASON))?;
+            let mut previous = unsafe { setter(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+            // Windows 10 1607 supports per-monitor V1, while V2 starts in 1703.
+            if previous.is_null() {
+                previous = unsafe { setter(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE) };
+            }
             ensure!(
-                !old.is_null(),
-                "per-monitor DPI awareness is unavailable; cannot capture physical desktop pixels"
+                !previous.is_null(),
+                "per-monitor DPI awareness is unavailable; cannot use physical desktop pixels"
             );
-            Ok(Self(old))
+            Ok(Self { previous, setter })
         }
     }
     impl Drop for DpiGuard {
         fn drop(&mut self) {
             unsafe {
-                SetThreadDpiAwarenessContext(self.0);
+                (self.setter)(self.previous);
             }
         }
     }
+
     struct Desktop(HDESK);
     impl Drop for Desktop {
         fn drop(&mut self) {
@@ -355,6 +401,51 @@ pub(crate) mod windows {
             desktop_height: raw_height,
             captured_unix,
         })
+    }
+    #[cfg(test)]
+    mod dpi_tests {
+        use super::*;
+        use std::cell::RefCell;
+        thread_local! { static CALLS: RefCell<Vec<isize>> = const { RefCell::new(Vec::new()) }; }
+        unsafe extern "system" fn v2(context: DPI_AWARENESS_CONTEXT) -> DPI_AWARENESS_CONTEXT {
+            CALLS.with(|calls| calls.borrow_mut().push(context as isize));
+            42usize as DPI_AWARENESS_CONTEXT
+        }
+        unsafe extern "system" fn v1(context: DPI_AWARENESS_CONTEXT) -> DPI_AWARENESS_CONTEXT {
+            CALLS.with(|calls| calls.borrow_mut().push(context as isize));
+            if context == DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 {
+                ptr::null_mut()
+            } else {
+                42usize as DPI_AWARENESS_CONTEXT
+            }
+        }
+        unsafe extern "system" fn denied(_: DPI_AWARENESS_CONTEXT) -> DPI_AWARENESS_CONTEXT {
+            ptr::null_mut()
+        }
+        #[test]
+        fn missing_api_is_an_operation_error() {
+            assert!(DpiGuard::enter_with(None)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("PowerShell and file tools remain available"));
+        }
+        #[test]
+        fn v2_restores_the_previous_context() {
+            CALLS.with(|c| c.borrow_mut().clear());
+            drop(DpiGuard::enter_with(Some(v2)).unwrap());
+            CALLS.with(|c| assert_eq!(*c.borrow(), [-4, 42]));
+        }
+        #[test]
+        fn v1_fallback_restores_the_previous_context() {
+            CALLS.with(|c| c.borrow_mut().clear());
+            drop(DpiGuard::enter_with(Some(v1)).unwrap());
+            CALLS.with(|c| assert_eq!(*c.borrow(), [-4, -3, 42]));
+        }
+        #[test]
+        fn unsupported_contexts_fail_without_a_guard() {
+            assert!(DpiGuard::enter_with(Some(denied)).is_err());
+        }
     }
 }
 

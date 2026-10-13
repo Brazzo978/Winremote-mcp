@@ -259,12 +259,47 @@ struct Info {
     elevated: bool,
     os: &'static str,
     shell: String,
-    capabilities: [&'static str; 16],
+    capabilities: Vec<&'static str>,
+    desktop_supported: bool,
+    desktop_unavailable_reason: Option<&'static str>,
     expires_unix: u64,
     native_exit_semantics: &'static str,
 }
+fn capabilities(desktop_supported: bool) -> Vec<&'static str> {
+    let mut result = vec![
+        "execute",
+        "files.read",
+        "files.write",
+        "files.list",
+        "files.stat",
+        "files.read-chunk",
+        "files.upload",
+        "files.copy",
+        "files.move",
+        "files.mkdir",
+    ];
+    if desktop_supported {
+        result.extend([
+            "desktop.screenshot",
+            "desktop.move",
+            "desktop.click",
+            "desktop.scroll",
+            "desktop.type",
+            "desktop.key",
+        ]);
+    }
+    result
+}
 async fn info(State(state): State<Arc<HostState>>) -> Json<Info> {
-    Json(Info { user: platform::effective_user(), elevated: state.elevated, os: "Windows", shell: state.shell.to_string_lossy().into_owned(), capabilities: ["execute", "files.read", "files.write", "files.list", "desktop.screenshot", "files.stat", "files.read-chunk", "files.upload", "files.copy", "files.move", "files.mkdir", "desktop.move", "desktop.click", "desktop.scroll", "desktop.type", "desktop.key"], expires_unix: state.expires_unix, native_exit_semantics: "The final native process exit code is propagated; terminating PowerShell errors exit 1." })
+    let desktop_supported = crate::desktop::is_supported();
+    Json(Info {
+        user: platform::effective_user(), elevated: state.elevated, os: "Windows",
+        shell: state.shell.to_string_lossy().into_owned(),
+        capabilities: capabilities(desktop_supported), desktop_supported,
+        desktop_unavailable_reason: (!desktop_supported).then_some(crate::desktop::UNAVAILABLE_REASON),
+        expires_unix: state.expires_unix,
+        native_exit_semantics: "The final native process exit code is propagated; terminating PowerShell errors exit 1.",
+    })
 }
 
 async fn execute(
@@ -1409,5 +1444,18 @@ mod tests {
         assert_eq!(result.exit_code, Some(0));
         assert!(result.output_truncated);
         assert_eq!(result.stdout.len(), MAX_OUTPUT_BYTES);
+    }
+}
+
+#[cfg(test)]
+mod capability_tests {
+    #[test]
+    fn legacy_hosts_advertise_commands_and_files_without_desktop() {
+        let legacy = super::capabilities(false);
+        assert!(legacy.contains(&"execute") && legacy.contains(&"files.upload"));
+        assert!(!legacy.iter().any(|name| name.starts_with("desktop.")));
+        let modern = super::capabilities(true);
+        assert_eq!(modern.len(), legacy.len() + 6);
+        assert!(modern.contains(&"desktop.screenshot") && modern.contains(&"desktop.key"));
     }
 }

@@ -155,6 +155,10 @@ def main():
                 status, info = request("/v1/info")
                 assert status == 200 and info["os"] == "Windows"
                 assert "execute" in info["capabilities"]
+                assert isinstance(info["desktop_supported"], bool)
+                desktop_caps = [c for c in info["capabilities"] if c.startswith("desktop.")]
+                assert bool(desktop_caps) == info["desktop_supported"]
+                assert (info["desktop_unavailable_reason"] is None) == info["desktop_supported"]
                 # System roots must not trust the fresh self-signed host certificate.
                 untrusted = urllib.request.build_opener(urllib.request.ProxyHandler({}))
                 try:

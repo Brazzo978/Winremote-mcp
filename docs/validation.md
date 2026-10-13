@@ -1,3 +1,7 @@
+# Verifiche 0.5.1
+
+I nuovi controlli includono API DPI assente, fallback V1, ripristino contesto, capacità legacy e ciclo di vita della regola firewall COM. La pipeline aggiunge compilazione del target Windows 7 con std ricompilata, controllo PE e test sul runner moderno. Per risultati e limiti consulta [compatibilità](compatibility.md) e [CI](https://github.com/Brazzo978/Winremote-mcp/actions). La prova su Windows 7/Server 2012 R2 effettivi è da completare.
+
 # Verifiche della versione 0.5.0
 
 Distribuzione verificata: Windows x64. Le prove locali del 9 ottobre 2026 hanno usato la toolchain Rust gnullvm con LLVM-MinGW e il binario release. I risultati di CI MSVC sono consultabili nella [pagina Actions](https://github.com/Brazzo978/Winremote-mcp/actions).

@@ -24,3 +24,30 @@ jobs:
         with:
           name: winremote-mcp-windows
           path: target/release/winremote-mcp.exe
+
+  windows_7_x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # Tier 3: no downloadable std artifact; build-std recompiles it for Win7.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-09-15
+          components: rust-src
+      - name: Unit tests with Windows 7 target
+        run: cargo +nightly-2026-09-15 test -Z build-std --target x86_64-win7-windows-msvc --locked
+      - name: Build and audit Windows 7 executable
+        shell: pwsh
+        run: ./scripts/Build-Win7.ps1
+      - name: Host and connection smoke on Windows runner
+        run: python tests/smoke.py --exe dist/winremote-mcp-win7-x64.exe --allow-headless
+      - name: Desktop smoke on Windows runner
+        run: python tests/desktop_smoke.py --exe dist/winremote-mcp-win7-x64.exe --allow-headless
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winremote-mcp-win7-x64
+          path: dist/winremote-mcp-win7-x64.exe
+          if-no-files-found: error

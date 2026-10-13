@@ -8,7 +8,7 @@ Bridge Rust portabile per esporre temporaneamente una macchina Windows a Codex o
 
 ## Download e avvio rapido
 
-Scarica [winremote-mcp.exe dalla release v0.5.0](https://github.com/Brazzo978/Winremote-mcp/releases/tag/v0.5.0). Il pacchetto ZIP contiene anche guide, licenza, configurazioni di esempio e checksum. Per usare il binario non serve installare Rust: la distribuzione verificata è Windows x64.
+Scarica [winremote-mcp.exe dalla release v0.5.1](https://github.com/Brazzo978/Winremote-mcp/releases/tag/v0.5.1). Il pacchetto ZIP contiene anche guide, licenza, configurazioni di esempio e checksum. Per usare il binario non serve installare Rust: la distribuzione verificata è Windows x64.
 
 1. Copia l'EXE sul PC Windows da controllare, avvialo e conferma UAC. Lascia aperta la console.
 2. Sul PC Windows dell'agente, copia lo stesso EXE in un percorso stabile e registra il client MCP.
@@ -19,7 +19,21 @@ Scarica [winremote-mcp.exe dalla release v0.5.0](https://github.com/Brazzo978/Wi
 
 Il progetto è in sviluppo: i limiti operativi riportati sotto fanno parte del comportamento attuale.
 
-## Stato della versione 0.5.0
+## Compatibilità Windows
+
+Il binario portabile distribuito dalla 0.5.1 viene compilato per `x86_64-win7-windows-msvc`, ricompilando anche la libreria standard Rust e collegando staticamente il runtime C. Il target minimo del progetto è Windows 7 x64; le verifiche su Windows 7 e Server 2012 R2 effettivi sono ancora da completare.
+
+| Sistema | PowerShell e file | Screenshot e input |
+|---|---|---|
+| Windows 7 / Server 2008 R2 | Build dedicata, prova sul sistema da completare | Disabilitati |
+| Windows 8/8.1 / Server 2012/2012 R2 | Build dedicata, prova sul sistema da completare | Disabilitati |
+| Windows 10 da 1607 / Server 2016 e successivi | Verificati su Windows moderno | Disponibili con sessione interattiva sbloccata |
+
+`windows_info` riporta `desktop_supported`, `desktop_unavailable_reason` e le sole capacità disponibili per il sistema. Il catalogo MCP mantiene 18 strumenti: su un host legacy, le chiamate desktop restituiscono un errore esplicito e gli strumenti per comandi/file continuano a essere disponibili. Non occorre scegliere una modalità all'avvio.
+
+Le API desktop moderne sono risolte a runtime: la loro assenza non impedisce il caricamento dell'EXE. La CI controlla anche gli import della build Windows 7 per rilevare dipendenze statiche incompatibili. Questi controlli non sostituiscono una prova sul sistema operativo di destinazione. Vedi [compatibilità e build legacy](docs/compatibility.md).
+
+## Stato della versione 0.5.1
 
 Implementato:
 
@@ -159,7 +173,7 @@ Lo strumento `desktop_screenshot` cattura ciò che è visibile sul desktop virtu
 
 È necessaria una sessione interattiva sbloccata; il modulo rifiuta Sessione 0, lock screen e desktop protetto UAC. Finestre coperte non vengono mostrate per intero; contenuti protetti possono apparire neri. Massimo 16 milioni di pixel nell'immagine ridotta e 2 MiB nel PNG: il modulo riduce ulteriormente la risoluzione se il PNG supera il limite.
 
-Aggiorna host e client MCP alla versione 0.5.0 per avere anche gli input desktop. Il pairing breve resta invariato.
+Aggiorna host e client MCP alla versione 0.5.1 per avere anche gli input desktop. Il pairing breve resta invariato.
 
 ## Input desktop
 
@@ -179,7 +193,7 @@ Non sono implementati drag, pressione persistente di tasti/pulsanti o UI Automat
 
 ## Limiti operativi
 
-- Windows PowerShell 5.1 inclusa nel sistema, avviata senza profilo e in modalità non interattiva.
+- Windows PowerShell di sistema, avviata senza profilo e in modalità non interattiva. Su Windows 7 la versione preinstallata è precedente alla 5.1: verifica i requisiti degli script e dei programmi che vuoi eseguire.
 - Ogni chiamata avvia un processo nuovo; directory e variabili non persistono fra chiamate.
 - Script: massimo 8 KiB, per rispettare il limite della riga di comando Windows.
 - Timeout: 1–120 secondi, default 60, comunque limitato alla vita residua dell'invito.

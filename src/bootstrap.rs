@@ -77,7 +77,7 @@ impl FirewallGuard {
         );
         let output = std::process::Command::new(powershell()?)
             .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
-                "$ErrorActionPreference='Stop'; New-NetFirewallRule -Name $env:WINREMOTE_RULE -DisplayName $env:WINREMOTE_RULE -Direction Inbound -Action Allow -Protocol TCP -LocalAddress $env:WINREMOTE_BIND -LocalPort $env:WINREMOTE_PORT -RemoteAddress LocalSubnet -Profile Private -Program $env:WINREMOTE_EXE | Out-Null"])
+                "$ErrorActionPreference='Stop'; $policy=New-Object -ComObject HNetCfg.FwPolicy2; $rule=New-Object -ComObject HNetCfg.FWRule; $rule.Name=$env:WINREMOTE_RULE; $rule.Description='Temporary Winremote-mcp LAN access'; $rule.Protocol=6; $rule.LocalPorts=$env:WINREMOTE_PORT; $rule.LocalAddresses=$env:WINREMOTE_BIND; $rule.RemoteAddresses='LocalSubnet'; $rule.ApplicationName=$env:WINREMOTE_EXE; $rule.Direction=1; $rule.Action=1; $rule.Profiles=2; $rule.Enabled=$true; $policy.Rules.Add($rule)"])
             .env("WINREMOTE_RULE", &name)
             .env("WINREMOTE_BIND", bind.ip().to_string())
             .env("WINREMOTE_PORT", bind.port().to_string())
@@ -101,7 +101,7 @@ impl Drop for FirewallGuard {
         if let Ok(shell) = powershell() {
             let result = std::process::Command::new(shell)
                 .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
-                    "$ErrorActionPreference='Stop'; Remove-NetFirewallRule -Name $env:WINREMOTE_RULE -ErrorAction SilentlyContinue"])
+                    "$ErrorActionPreference='Stop'; $policy=New-Object -ComObject HNetCfg.FwPolicy2; $policy.Rules.Remove($env:WINREMOTE_RULE)"])
                 .env("WINREMOTE_RULE", &self.name)
                 .creation_flags(0x08000000)
                 .output();
@@ -109,5 +109,52 @@ impl Drop for FirewallGuard {
                 eprintln!("Could not remove firewall rule {}.", self.name);
             }
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod firewall_tests {
+    use super::*;
+
+    #[test]
+    fn loopback_firewall_rule_is_private_scoped_and_removed() {
+        use std::os::windows::process::CommandExt;
+        if !platform::is_elevated().unwrap_or(false) {
+            eprintln!("SKIP firewall lifecycle: requires an elevated test process");
+            return;
+        }
+        // No listener is opened. The rule only targets this test executable on loopback.
+        let guard = FirewallGuard::create("127.0.0.1:18443".parse().unwrap()).unwrap();
+        let name = guard.name.clone();
+        let output = std::process::Command::new(powershell().unwrap())
+            .args(["-NoProfile", "-NonInteractive", "-Command",
+                "$ErrorActionPreference='Stop'; $r=(New-Object -ComObject HNetCfg.FwPolicy2).Rules.Item($env:WINREMOTE_RULE); [Console]::WriteLine(('{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}' -f $r.Profiles,$r.Protocol,$r.LocalAddresses,$r.LocalPorts,$r.RemoteAddresses,$r.Direction,$r.Action,$r.Enabled,$r.ApplicationName))"])
+            .env("WINREMOTE_RULE", &name).creation_flags(0x08000000)
+            .output().unwrap();
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        let fields: Vec<_> = text.trim().split('|').collect();
+        assert_eq!(
+            &fields[..8],
+            &[
+                "2",
+                "6",
+                "127.0.0.1",
+                "18443",
+                "LocalSubnet",
+                "1",
+                "1",
+                "True"
+            ]
+        );
+        assert!(fields[8].eq_ignore_ascii_case(std::env::current_exe().unwrap().to_str().unwrap()));
+        drop(guard);
+        let output = std::process::Command::new(powershell().unwrap())
+            .args(["-NoProfile", "-NonInteractive", "-Command",
+                "$ErrorActionPreference='Stop'; $p=New-Object -ComObject HNetCfg.FwPolicy2; [Console]::WriteLine(@($p.Rules | Where-Object { $_.Name -eq $env:WINREMOTE_RULE }).Count)"])
+            .env("WINREMOTE_RULE", name).creation_flags(0x08000000)
+            .output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), "0");
     }
 }
