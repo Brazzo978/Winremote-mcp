@@ -134,19 +134,16 @@ mod firewall_tests {
         assert!(output.status.success());
         let text = String::from_utf8(output.stdout).unwrap();
         let fields: Vec<_> = text.trim().split('|').collect();
-        assert_eq!(
-            &fields[..8],
-            &[
-                "2",
-                "6",
-                "127.0.0.1",
-                "18443",
-                "LocalSubnet",
-                "1",
-                "1",
-                "True"
-            ]
+        assert_eq!(fields.len(), 9);
+        assert_eq!(&fields[..2], &["2", "6"]);
+        assert!(
+            matches!(
+                fields[2],
+                "127.0.0.1" | "127.0.0.1/32" | "127.0.0.1/255.255.255.255"
+            ),
+            "rule must remain restricted to exactly one loopback address"
         );
+        assert_eq!(&fields[3..8], &["18443", "LocalSubnet", "1", "1", "True"]);
         assert!(fields[8].eq_ignore_ascii_case(std::env::current_exe().unwrap().to_str().unwrap()));
         drop(guard);
         let output = std::process::Command::new(powershell().unwrap())
