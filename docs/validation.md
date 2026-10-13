@@ -1,6 +1,6 @@
 # Verifiche 0.5.1
 
-I nuovi controlli includono API DPI assente, fallback V1, ripristino contesto, capacità legacy e ciclo di vita della regola firewall COM. La pipeline aggiunge compilazione del target Windows 7 con std ricompilata, controllo PE e test sul runner moderno. Per risultati e limiti consulta [compatibilità](compatibility.md) e [CI](https://github.com/Brazzo978/Winremote-mcp/actions). La prova su Windows 7/Server 2012 R2 effettivi è da completare.
+I nuovi controlli includono API DPI assente, fallback V1, ripristino contesto, capacità legacy e ciclo di vita della regola firewall COM. La pipeline aggiunge compilazione del target Windows 7 con std ricompilata, controllo PE e test sul runner moderno. Per risultati e limiti consulta [compatibilità](compatibility.md) e [CI](https://github.com/Brazzo978/Winremote-mcp/actions). Prima prova Server 2012 R2 completata: avvio, pairing, PowerShell 4 elevata, desktop disabilitato e trasferimento di 2 MiB + 67 byte con SHA-256 identico fra sorgente, server e download. La build successiva corregge output Unicode/cwd e aggiunge notifiche console. Windows 7 resta da verificare sul sistema effettivo.
 
 # Verifiche della versione 0.5.0
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.1 — compatibilità Windows legacy
+## 0.5.1 — compatibilità Windows legacy e avvisi connessione
 
 - Build dedicata Windows 7 x64 con std Rust ricompilata e runtime C statico.
 - Rimosso l'import diretto di SetThreadDpiAwarenessContext che impediva l'avvio su Server 2012 R2.
@@ -9,8 +9,11 @@
 - Fallback DPI V1 per Windows 10 1607 e ripristino del contesto del thread.
 - Firewall COM compatibile con Windows 7, con gli stessi limiti LAN e rimozione all'arresto.
 - CI separata per la build legacy e controllo degli import PE.
+- Avviso console dopo autenticazione e riepilogo ultimo contatto per IP.
+- Output della pipeline PowerShell normalizzato UTF-8 anche su PowerShell 4.
+- Directory di lavoro PowerShell passata senza prefisso verbatim, compatibile con le versioni legacy.
 
-La prova sul sistema Windows 7/Server 2012 R2 effettivo è ancora da completare; vedi [compatibilità](docs/compatibility.md).
+Una prima prova su Server 2012 R2 ha verificato avvio, pairing, PowerShell elevata e trasferimenti. Windows 7 resta da provare sul sistema effettivo; vedi [compatibilità](docs/compatibility.md).
 
 ## 0.5.0 — prima distribuzione pubblica
 

@@ -220,6 +220,8 @@ def main():
                 assert connected["connected"] and "token" not in connected
                 assert connected["host"]["os"] == "Windows"
                 assert call("windows_info", {})["os"] == "Windows"
+                assert "Agent authenticated from 127.0.0.1" in (work / "stderr.txt").read_text(encoding="utf-8")
+                print("PASS authenticated peer notification in host console")
                 print("PASS MCP initialize, tools/list and HTTPS tools/call")
 
                 assert request("/v1/desktop/screenshot", {}, token=False)[0] == 401

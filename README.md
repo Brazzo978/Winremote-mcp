@@ -2,7 +2,7 @@
 
 Bridge Rust portabile per esporre temporaneamente una macchina Windows a Codex o a un altro agente tramite MCP.
 
-**Avvio sulla macchina da controllare:** doppio clic su `winremote-mcp.exe`, consenso UAC, copia dell'invito breve `IP:CODICE`. Il programma seleziona l'IPv4 della route predefinita, ascolta su TCP 8443 per un'ora e apre una regola firewall limitata a reti Private e LocalSubnet. Tutte le capacità implementate sono disponibili: l'agente sceglie quale strumento utilizzare.
+**Avvio sulla macchina da controllare:** doppio clic su `winremote-mcp.exe`, consenso UAC, copia dell'invito breve `IP:CODICE`. Il programma seleziona l'IPv4 della route predefinita, ascolta su TCP 8443 per un'ora e apre una regola firewall limitata a reti Private e LocalSubnet. Le capacità disponibili dipendono dalla versione di Windows; l'agente sceglie gli strumenti dopo averle lette da windows_info.
 
 **Sulla macchina dell'agente:** lo stesso binario esegue un adattatore MCP locale su stdio. Si configura una volta in Codex; il pairing salva una connessione temporanea in un file privato. Non servono account Windows remoti né OpenSSH.
 
@@ -222,7 +222,7 @@ cargo clippy --all-targets --locked -- -D warnings
 
 ```
 
-La CI usa Windows MSVC. `scripts/Build.ps1` copia il binario in `dist/`.
+La CI verifica build standard e target Windows 7. Per distribuire il binario portabile usa `scripts/Build-Win7.ps1`.
 
 `python tests/smoke.py --exe target/debug/winremote-mcp.exe` esegue un test end-to-end locale senza elevazione né apertura della LAN: TLS, autenticazione, file grandi, copia/spostamento, PowerShell, timeout, isolamento dei processi, screenshot e protocollo MCP. I test non avviano il percorso UAC senza argomenti. `python tests/desktop_smoke.py --exe target/debug/winremote-mcp.exe` verifica input reali contro una finestra temporanea di test: coordinate, click, scroll, Unicode, combinazioni e rilascio dei tasti. Sui runner CI senza desktop interattivo usa `--allow-headless`, che segnala esplicitamente le verifiche desktop saltate.
 
@@ -241,3 +241,9 @@ Codex / altro host MCP
 MCP non lega il progetto a un modello: anche DeepSeek può usare il bridge tramite un runtime agente che supporti MCP o tramite la sua API HTTPS. Il solo modello/API di inferenza non apre una connessione alla macchina.
 
 Il protocollo è documentato in [docs/protocol.md](docs/protocol.md), e le estensioni desktop in [docs/roadmap.md](docs/roadmap.md).
+
+## Avvisi nella console del bridge
+
+La console sulla macchina controllata mostra un avviso quando un agente completa il pairing o quando un nuovo IP effettua la prima richiesta autenticata. Usa l'IP del socket, senza fidarsi di header inviati dal client. Gli orari sono indicati in UTC.
+
+Ogni minuto mostra l'ultimo contatto autenticato per gli IP registrati, fino a un massimo di 64. HTTPS usa richieste separate: l'ultimo contatto indica attività osservata, non una connessione persistente o una prova di disconnessione. Nei messaggi non vengono inseriti token, inviti o contenuti dei comandi. Gli avvisi sono su stderr; lo stdout del client MCP rimane riservato al protocollo.

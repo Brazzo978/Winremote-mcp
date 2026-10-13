@@ -15,12 +15,12 @@ use crate::protocol::{
 use anyhow::{Context, Result};
 use axum::{
     body::Bytes,
-    extract::{DefaultBodyLimit, Query, State},
+    extract::{ConnectInfo, DefaultBodyLimit, Query, State},
     http::{header, Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post, put},
-    Json, Router,
+    Extension, Json, Router,
 };
 use base64::{
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
@@ -30,7 +30,7 @@ use rand::RngCore;
 use serde::Serialize;
 use std::{
     collections::HashMap,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -61,6 +61,7 @@ struct HostState {
     endpoint: String,
     certificate_pem: String,
     pending: Mutex<HashMap<String, PendingPair>>,
+    agents: Mutex<HashMap<IpAddr, u64>>,
     uploads: Arc<fileshare::UploadManager>,
     expires_unix: u64,
     deadline: Instant,
@@ -75,7 +76,60 @@ struct PendingPair {
 }
 const MAX_PENDING_PAIRS: usize = 64;
 const PAIR_TTL: Duration = Duration::from_secs(30);
+fn utc_clock(seconds: u64) -> String {
+    let day = seconds % 86_400;
+    format!("{:02}:{:02}:{:02} UTC", day / 3600, day / 60 % 60, day % 60)
+}
+
 impl HostState {
+    async fn authenticated_contact(&self, peer: Option<IpAddr>, paired: bool) {
+        let Some(peer) = peer else {
+            return;
+        };
+        let now = unix_now();
+        let mut agents = self.agents.lock().await;
+        let first = !agents.contains_key(&peer);
+        if first && agents.len() >= 64 {
+            if let Some(oldest) = agents
+                .iter()
+                .min_by_key(|(_, time)| **time)
+                .map(|(ip, _)| *ip)
+            {
+                agents.remove(&oldest);
+            }
+        }
+        agents.insert(peer, now);
+        drop(agents);
+        if first || paired {
+            eprintln!(
+                "[{}] Agent authenticated from {}{}.",
+                utc_clock(now),
+                peer,
+                if paired { " (pairing complete)" } else { "" }
+            );
+        }
+    }
+
+    async fn report_last_contacts(&self) {
+        let mut peers: Vec<_> = self
+            .agents
+            .lock()
+            .await
+            .iter()
+            .map(|(peer, seen)| (*peer, *seen))
+            .collect();
+        peers.sort_by_key(|(peer, _)| *peer);
+        let now = unix_now();
+        for (peer, seen) in peers {
+            eprintln!(
+                "[{}] Last authenticated contact from {}: {} ({}s ago).",
+                utc_clock(now),
+                peer,
+                utc_clock(seen),
+                now.saturating_sub(seen)
+            );
+        }
+    }
     fn expired(&self) -> bool {
         Instant::now() >= self.deadline
             || unix_now() >= self.expires_unix
@@ -135,7 +189,14 @@ async fn authenticate(
     next: Next,
 ) -> Response {
     match authorization_status(&state, req.headers()) {
-        Ok(()) => next.run(req).await,
+        Ok(()) => {
+            let peer = req
+                .extensions()
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|ConnectInfo(addr)| addr.ip());
+            state.authenticated_contact(peer, false).await;
+            next.run(req).await
+        }
         Err(status) => ApiError(
             status,
             status
@@ -200,6 +261,7 @@ async fn pair_challenge(
 
 async fn pair_finish(
     State(state): State<Arc<HostState>>,
+    peer: Option<Extension<ConnectInfo<SocketAddr>>>,
     Json(req): Json<FinishRequest>,
 ) -> Result<Json<Connection>, ApiError> {
     pairing::validate_nonce(&req.server_nonce)
@@ -245,6 +307,9 @@ async fn pair_finish(
         &req.proof,
     )
     .map_err(|_| ApiError(StatusCode::UNAUTHORIZED, "invalid pairing proof".into()))?;
+    state
+        .authenticated_contact(peer.map(|Extension(ConnectInfo(addr))| addr.ip()), true)
+        .await;
     Ok(Json(Connection {
         version: 1,
         endpoint: state.endpoint.clone(),
@@ -748,6 +813,7 @@ pub async fn run(bind: SocketAddr, ttl_secs: u64, require_admin: bool) -> Result
         endpoint,
         certificate_pem: cert_pem,
         pending: Mutex::new(HashMap::new()),
+        agents: Mutex::new(HashMap::new()),
         uploads: Arc::new(fileshare::UploadManager::new()),
         expires_unix,
         deadline: Instant::now() + Duration::from_secs(ttl_secs),
@@ -757,12 +823,16 @@ pub async fn run(bind: SocketAddr, ttl_secs: u64, require_admin: bool) -> Result
         shutdown: shutdown_tx,
     });
     let cleanup_uploads = state.uploads.clone();
+    let console_state = state.clone();
     let mut cleanup_shutdown = state.shutdown.subscribe();
     let cleanup_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(60));
         loop {
             tokio::select! {
-                _ = interval.tick() => cleanup_uploads.cleanup_expired(),
+                _ = interval.tick() => {
+                    cleanup_uploads.cleanup_expired();
+                    console_state.report_last_contacts().await;
+                },
                 _ = cleanup_shutdown.changed() => break,
             }
         }
@@ -771,7 +841,7 @@ pub async fn run(bind: SocketAddr, ttl_secs: u64, require_admin: bool) -> Result
     let handle = axum_server::Handle::new();
     let server = axum_server::from_tcp_rustls(listener, tls)
         .handle(handle.clone())
-        .serve(routes.into_make_service());
+        .serve(routes.into_make_service_with_connect_info::<SocketAddr>());
     println!("{invitation}");
     tokio::pin!(server);
     let outcome = tokio::select! {
@@ -897,6 +967,31 @@ mod process {
             Ok((read, write))
         }
     }
+    pub(super) fn powershell_cwd(path: &Path) -> Result<Vec<u16>> {
+        use std::os::windows::ffi::OsStringExt;
+        let original: Vec<u16> = path.as_os_str().encode_wide().collect();
+        let prefix: Vec<u16> = r"\\?\".encode_utf16().collect();
+        let unc_prefix: Vec<u16> = r"\\?\UNC\".encode_utf16().collect();
+        let mut normal = if original.starts_with(&unc_prefix) {
+            [vec![92, 92], original[unc_prefix.len()..].to_vec()].concat()
+        } else if original.starts_with(&prefix) {
+            original[prefix.len()..].to_vec()
+        } else {
+            original
+        };
+        let directory = PathBuf::from(std::ffi::OsString::from_wide(&normal));
+        anyhow::ensure!(
+            directory.is_absolute(),
+            "PowerShell cwd must resolve to a drive or UNC path"
+        );
+        anyhow::ensure!(
+            normal.len() < 260,
+            "PowerShell cwd exceeds the Windows legacy MAX_PATH limit"
+        );
+        normal.push(0);
+        Ok(normal)
+    }
+
     fn drain(handle: Handle) -> (String, bool) {
         let mut file = unsafe { std::fs::File::from_raw_handle(handle.0) };
         std::mem::forget(handle);
@@ -928,7 +1023,7 @@ mod process {
     }
     fn encoded(script: &str) -> String {
         use base64::engine::general_purpose::STANDARD;
-        let wrapped = format!("[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); $OutputEncoding = [Console]::OutputEncoding; $ErrorActionPreference = 'Stop'; try {{ & {{\n{script}\n}}; if ($null -ne $LASTEXITCODE) {{ exit $LASTEXITCODE }} }} catch {{ [Console]::Error.WriteLine($_.ToString()); exit 1 }}");
+        let wrapped = format!("[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); $OutputEncoding = [Console]::OutputEncoding; $ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; try {{ & {{\n{script}\n}} | Out-String -Stream | ForEach-Object {{ [Console]::Out.WriteLine($_) }}; if ($null -ne $LASTEXITCODE) {{ exit $LASTEXITCODE }} }} catch {{ [Console]::Error.WriteLine($_.ToString()); exit 1 }}");
         let bytes: Vec<u8> = wrapped.encode_utf16().flat_map(u16::to_le_bytes).collect();
         STANDARD.encode(bytes)
     }
@@ -963,7 +1058,7 @@ mod process {
         );
         let mut command_w = wide(std::ffi::OsStr::new(&command));
         let shell_w = wide(shell.as_os_str());
-        let cwd_w = wide(cwd.as_os_str());
+        let cwd_w = powershell_cwd(cwd)?;
         let mut startup: STARTUPINFOW = unsafe { zeroed() };
         startup.cb = size_of::<STARTUPINFOW>() as u32;
         startup.dwFlags = STARTF_USESTDHANDLES;
@@ -1064,7 +1159,7 @@ mod tests {
     };
     use tower::ServiceExt;
 
-    fn state(expired: bool) -> Arc<HostState> {
+    pub(super) fn state(expired: bool) -> Arc<HostState> {
         let (shutdown, _) = watch::channel(false);
         Arc::new(HostState {
             token: "test-token".into(),
@@ -1072,6 +1167,7 @@ mod tests {
             endpoint: "https://127.0.0.1:8443".into(),
             certificate_pem: "test-certificate".into(),
             pending: Mutex::new(HashMap::new()),
+            agents: Mutex::new(HashMap::new()),
             uploads: Arc::new(fileshare::UploadManager::new()),
             expires_unix: if expired {
                 unix_now() - 1
@@ -1263,14 +1359,14 @@ mod tests {
             server_nonce: challenge.server_nonce.clone(),
             proof: proof.clone(),
         };
-        let connection = pair_finish(State(state.clone()), Json(finish.clone()))
+        let connection = pair_finish(State(state.clone()), None, Json(finish.clone()))
             .await
             .unwrap()
             .0;
         assert_eq!(connection.token, state.token);
         assert_eq!(state.pending.lock().await.len(), 0);
         assert_eq!(
-            pair_finish(State(state.clone()), Json(finish))
+            pair_finish(State(state.clone()), None, Json(finish))
                 .await
                 .err()
                 .unwrap()
@@ -1292,7 +1388,7 @@ mod tests {
             proof: "invalid".into(),
         };
         assert_eq!(
-            pair_finish(State(state.clone()), Json(wrong))
+            pair_finish(State(state.clone()), None, Json(wrong))
                 .await
                 .err()
                 .unwrap()
@@ -1305,7 +1401,7 @@ mod tests {
             proof: pairing::client_proof(&state.pairing_code, &client_nonce, &challenge).unwrap(),
         };
         assert_eq!(
-            pair_finish(State(state.clone()), Json(retry))
+            pair_finish(State(state.clone()), None, Json(retry))
                 .await
                 .err()
                 .unwrap()
@@ -1457,5 +1553,89 @@ mod capability_tests {
         let modern = super::capabilities(true);
         assert_eq!(modern.len(), legacy.len() + 6);
         assert!(modern.contains(&"desktop.screenshot") && modern.contains(&"desktop.key"));
+    }
+}
+
+#[cfg(test)]
+mod console_activity_tests {
+    use super::*;
+    use axum::body::Body;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn rejected_requests_do_not_register_a_connection() {
+        let state = super::tests::state(false);
+        let peer: SocketAddr = "192.0.2.5:12345".parse().unwrap();
+        let request = Request::builder()
+            .uri("/v1/info")
+            .header(header::AUTHORIZATION, "Bearer wrong")
+            .extension(ConnectInfo(peer))
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            router(state.clone())
+                .oneshot(request)
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert!(state.agents.lock().await.is_empty());
+        let request = Request::builder()
+            .uri("/v1/info")
+            .header(header::AUTHORIZATION, "Bearer test-token")
+            .extension(ConnectInfo(peer))
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            router(state.clone())
+                .oneshot(request)
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        assert!(state.agents.lock().await.contains_key(&peer.ip()));
+    }
+
+    #[tokio::test]
+    async fn activity_is_bounded_and_uses_socket_addresses() {
+        let state = super::tests::state(false);
+        state.authenticated_contact(None, true).await;
+        assert!(state.agents.lock().await.is_empty());
+        for last in 1..=70 {
+            state
+                .authenticated_contact(Some(IpAddr::from([192, 0, 2, last])), false)
+                .await;
+        }
+        assert_eq!(state.agents.lock().await.len(), 64);
+        assert_eq!(utc_clock(3661), "01:01:01 UTC");
+    }
+}
+
+#[cfg(all(test, windows))]
+mod powershell_cwd_tests {
+    use super::*;
+    #[test]
+    fn legacy_shell_receives_dos_and_unc_paths_without_verbatim_prefixes() {
+        for (input, expected) in [
+            (r"\\?\C:\Temp", r"C:\Temp"),
+            (r"\\?\UNC\server\share\Temp", r"\\server\share\Temp"),
+            (r"C:\Temp", r"C:\Temp"),
+        ] {
+            let wide = process::powershell_cwd(std::path::Path::new(input)).unwrap();
+            assert_eq!(
+                String::from_utf16(&wide[..wide.len() - 1]).unwrap(),
+                expected
+            );
+        }
+    }
+    #[test]
+    fn unsupported_legacy_working_directories_fail_explicitly() {
+        assert!(process::powershell_cwd(std::path::Path::new(r"\\?\Volume{abc}\Temp")).is_err());
+        assert!(
+            process::powershell_cwd(std::path::Path::new(&format!(r"C:\{}", "a".repeat(260))))
+                .is_err()
+        );
     }
 }
