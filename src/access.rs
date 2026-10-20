@@ -512,14 +512,11 @@ pub(crate) fn verification_code(context: &[u8; 32]) -> String {
     field(&mut data, context);
     let hash = digest::digest(&digest::SHA256, &data);
     let b = hash.as_ref();
+    // This out-of-band comparison authenticates an initially untrusted TLS
+    // identity. Keep 64 bits rather than a short, cheaply grindable numeric code.
     format!(
-        "{:02X}{:02X}{:01X}-{:01X}{:02X}{:02X}",
-        b[0],
-        b[1],
-        b[2] >> 4,
-        b[2] & 15,
-        b[3],
-        b[4]
+        "{:02X}{:02X}-{:02X}{:02X}-{:02X}{:02X}-{:02X}{:02X}",
+        b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]
     )
 }
 pub(crate) fn proof_payload(
@@ -838,5 +835,13 @@ mod tests {
                 .unwrap_err(),
             AccessError::NotFound
         );
+    }
+}
+
+#[cfg(test)]
+mod comparison_code_tests {
+    #[test]
+    fn comparison_retains_64_bits_and_has_a_fixed_encoding() {
+        assert_eq!(super::verification_code(&[0; 32]), "E440-97BA-DD99-6DC7");
     }
 }

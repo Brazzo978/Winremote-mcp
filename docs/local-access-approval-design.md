@@ -25,7 +25,7 @@ Esempio di finestra, con dati fittizi:
 Richiesta di accesso a questo PC
 Da: 192.0.2.20
 Nome dichiarato: Codex
-Codice da confrontare: 7C2A9-1F4B8
+Codice da confrontare: 7C2A-91F4-B820-5D63
 
 Accesso: comandi e file con i privilegi attuali del bridge;
 screenshot e input se disponibili.
@@ -60,7 +60,7 @@ Approccio candidato, da formalizzare e verificare prima dell'implementazione:
 3. Per questa sola richiesta iniziale il client può accettare il certificato autofirmato non ancora autenticato, ma deve acquisire il DER del certificato effettivamente presentato durante TLS. Non deve fidarsi del solo PEM restituito nel JSON.
 4. Il server crea ID casuale, nonce proprio e scadenza. Finestra e client calcolano separatamente il medesimo codice di confronto dal contesto completo: versione e dominio, endpoint, DER del certificato TLS, chiave pubblica client, entrambi i nonce, ID, IP osservato e scadenza.
 5. Il client usa il proprio DER osservato sul collegamento; l'host usa il proprio DER reale. Un relay che termina TLS con un certificato diverso deve produrre codici diversi. Il confronto umano nel passo precedente costituisce la verifica fuori banda.
-6. Il contesto va serializzato canonicamente con prefissi di lunghezza, usando SHA-256 e domini distinti. La rappresentazione proposta del confronto usa 10 cifre esadecimali, divise in due gruppi. Il formato finale e la resistenza ai tentativi offline devono essere revisionati insieme ai limiti di richieste.
+6. Il contesto va serializzato canonicamente con prefissi di lunghezza, usando SHA-256 e domini distinti. La rappresentazione proposta del confronto usa 16 cifre esadecimali, divise in quattro gruppi. Il formato finale e la resistenza ai tentativi offline devono essere revisionati insieme ai limiti di richieste.
 7. Per il polling e il ritiro, il client deve usare TLS vincolato al DER osservato e prove di possesso della propria chiave privata su nonce server freschi, monouso e legati a richiesta, contesto, azione e scadenza. Un ID richiesta non è una credenziale.
 8. Solo dopo consenso locale e prova di possesso il server consegna la connessione. Non consegnarla attraverso il client bootstrap con verifica TLS disabilitata.
 9. Verificare `/v1/info` e sostituire il file privato di connessione soltanto alla fine, riutilizzando le garanzie esistenti.
@@ -88,7 +88,7 @@ Risultato proposto:
   "status": "pending",
   "request_id": "<handle locale opaco>",
   "endpoint": "https://192.0.2.10:8443",
-  "verification_code": "7C2A9-1F4B8",
+  "verification_code": "7C2A-91F4-B820-5D63",
   "expires_unix": 0,
   "poll_after_secs": 2,
   "instructions": "Show this code to the user; ask them to compare it on the Windows PC and approve there."
