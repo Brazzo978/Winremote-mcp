@@ -13,6 +13,15 @@ Il catalogo MCP contiene 21 strumenti. Le fixture usano soltanto loopback e cart
 
 La build Windows 7 usa una toolchain distinta e audit PE; l'esito della CI non prova il funzionamento della nuova UI su un vero Windows 7 o Server 2012 R2. La nuova versione non è stata ancora provata su quei sistemi reali.
 
+## Binario portabile 0.6.0 verificato
+
+Compilato da [CI della revisione bc3cd8c](https://github.com/Brazzo978/Winremote-mcp/actions/runs/39399781040), target `x86_64-win7-windows-msvc` e runtime C statico. Il file scaricato dalla CI ha passato anche localmente i tre smoke test (connessione/file/PowerShell, input desktop e QR/consenso), senza saltare le verifiche della UI.
+
+Audit PE: versione minima dichiarata 6.0, 226 simboli da otto DLL di sistema, nessuna dipendenza dinamica dal runtime del compilatore. Questo audit non sostituisce la prova su un sistema Windows 7 reale.
+
+- Dimensione: 10214912 byte.
+- SHA-256: `0ef1081b6748d5eaa4db5b63bcd6e29ac6c1de701f81e3b5a130e2ebe5239e04`.
+
 # Verifiche 0.5.1
 
 I nuovi controlli includono API DPI assente, fallback V1, ripristino contesto, capacità legacy e ciclo di vita della regola firewall COM. La pipeline aggiunge compilazione del target Windows 7 con std ricompilata, controllo PE e test sul runner moderno. Per risultati e limiti consulta [compatibilità](compatibility.md) e [CI](https://github.com/Brazzo978/Winremote-mcp/actions). Prima prova Server 2012 R2 completata: avvio, pairing, PowerShell 4 elevata, desktop disabilitato e trasferimento di 2 MiB + 67 byte con SHA-256 identico fra sorgente, server e download. La build successiva corregge output Unicode/cwd e aggiunge notifiche console. Windows 7 resta da verificare sul sistema effettivo.
