@@ -1,7 +1,7 @@
 # Proposta: connessione tramite QR
 
 Stato: progetto tecnico, non implementato. Base verificata: v0.5.1, commit 69f2bc5.
-Destinazione proposta: v0.6.0; nessuna modifica al protocollo HTTPS v1.
+Destinazione proposta: v0.6.0. Il percorso QR riusa le route HTTPS v1 esistenti; la modalità aggiuntiva con approvazione locale richiede nuove route opzionali.
 
 ## Obiettivo e flusso utente
 
@@ -14,6 +14,10 @@ Avviare il bridge su un PC Windows, passare all'agente un'immagine della finestr
 5. Il client decodifica, valida, completa il pairing e restituisce informazioni sul PC e capacità disponibili.
 
 Prerequisito del punto 4: l'immagine deve essere accessibile al processo MCP sul computer dell'agente. Un allegato visibile al modello non garantisce che quel processo possa aprirlo; la guida dovrà spiegare come salvarlo localmente quando necessario. Il client non recupera immagini attraverso URL o percorsi sul PC remoto.
+
+## Alternativa: IP e approvazione locale
+
+Su richiesta dell'utente, il progetto include anche [richiesta di accesso tramite IP](local-access-approval-design.md): l'agente non riceve l'invito, mostra un codice di confronto e attende Approva/Rifiuta sul PC Windows. La finestra viene estesa con consenso e coda richieste; il protocollo di autorizzazione aggiuntivo va specificato e verificato prima dello sviluppo.
 
 ## Decisioni principali
 
@@ -167,7 +171,7 @@ Scelta del contenuto:
 - QR con URL o contenuti estranei: ignorarli ai fini del pairing; non aprire URL né eseguire istruzioni.
 - Invito unico valido: chiamare `connect_bridge`; preservare la connessione precedente se qualunque fase successiva fallisce.
 
-Successo: stesso risultato di `bridge_connect`, senza invito, codice, bearer o byte dell'immagine. Mantenere content testuale e structuredContent secondo la versione MCP negoziata. Il catalogo passa dagli attuali 18 a 19 strumenti.
+Successo: stesso risultato di `bridge_connect`, senza invito, codice, bearer o byte dell'immagine. Mantenere content testuale e structuredContent secondo la versione MCP negoziata. Il percorso QR porta il catalogo dagli attuali 18 a 19 strumenti; con i due strumenti proposti per l'approvazione locale il totale previsto diventa 21.
 
 Errori operativi proposti: file non disponibile, immagine non supportata, limiti superati, QR assente/non leggibile, inviti ambigui, invito non valido/scaduto, host non verificabile, salvataggio fallito. Mappare questi casi su `isError` con messaggi sanitizzati; uno schema di argomenti errato resta un errore di argomenti. Non riportare payload decodificati o catene di errori contenenti credenziali.
 
@@ -204,7 +208,11 @@ Aggiungere QR al doppio clic e opzione esplicita `host --qr`; implementare Copia
 
 Criteri: chiusura da X, Ctrl+C e scadenza; errore UI con fallback console; nessuna UI in modalità MCP; stderr/stdout invariati per il protocollo. Verificare clipboard occupata, annullamento/esportazione fallita, file esistente, DPI diversi e RDP.
 
-### 4. Build e rilascio
+### 4. Richieste tramite IP e consenso locale
+
+Seguire il [progetto dedicato](local-access-approval-design.md), iniziando dalla specifica del legame fra richiesta, confronto umano e canale TLS. Questa modalità non deve ridurre le garanzie del pairing QR/testuale e resta disabilitata senza UI disponibile.
+
+### 5. Build e rilascio
 
 Eseguire suite esistente, smoke MCP/desktop, audit PE della build Win7 e prova manuale su Windows moderno e Server 2012 R2. La compatibilità Windows 7 va confermata su un sistema reale; la sola CI moderna non la dimostra.
 

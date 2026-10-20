@@ -45,3 +45,13 @@ Funzionalità pianificata; non presente nell'eseguibile v0.5.1.
 - Conservare l'invito testuale come alternativa per il collegamento manuale.
 
 La prima implementazione prevista usa QR. Data Matrix resta un'alternativa futura. La decodifica deve avvenire tramite uno strumento dedicato, senza dipendere dalla lettura visiva dei caratteri o dalla capacità del modello di interpretare direttamente il QR.
+
+## Accesso con sola richiesta tramite IP
+
+Funzionalità pianificata: [progetto di approvazione locale](local-access-approval-design.md).
+
+- L'agente comunica soltanto IP e porta con `bridge_request_access`.
+- Il PC Windows mostra IP effettivo del richiedente, nome dichiarato e codice di confronto, con Approva/Rifiuta locali.
+- Dopo confronto e approvazione, `bridge_access_status` completa il collegamento senza comunicare all'agente l'invito o una password Windows.
+- Richieste con scadenza, prova di possesso del client, legame al certificato TLS e limiti contro richieste ripetute; specifica crittografica da completare prima dell'implementazione.
+- Nessuna approvazione automatica o accesso in assenza della UI interattiva. QR e codice testuale restano disponibili.
