@@ -9,9 +9,9 @@ Prove su Windows moderno, eseguite il 20 ottobre 2026 con toolchain Rust gnullvm
 - Scadenza durante il dialogo modale Salva PNG: chiusura regolare senza crash.
 - Input desktop su finestra dedicata: passati click, doppio click, scroll, Unicode, tasti, modificatori e screenshot finale.
 
-Il catalogo MCP contiene 21 strumenti. Le fixture usano soltanto loopback e cartelle temporanee e rimuovono processi e credenziali di prova. Il test della finestra e aggiunto anche alla CI, con segnalazione esplicita se la UI non e disponibile.
+Il catalogo MCP contiene 21 strumenti. Le fixture usano soltanto loopback e cartelle temporanee e rimuovono processi e credenziali di prova. Il test della finestra è aggiunto anche alla CI, con segnalazione esplicita se la UI non è disponibile.
 
-La build Windows 7 usa una toolchain distinta e audit PE; l'esito della CI non prova il funzionamento della nuova UI su un vero Windows 7 o Server 2012 R2. La nuova versione non e stata ancora provata su quei sistemi reali.
+La build Windows 7 usa una toolchain distinta e audit PE; l'esito della CI non prova il funzionamento della nuova UI su un vero Windows 7 o Server 2012 R2. La nuova versione non è stata ancora provata su quei sistemi reali.
 
 # Verifiche 0.5.1
 

@@ -1,6 +1,6 @@
 # Protocollo v1
 
-Il listener è HTTPS. Le route operative richiedono `Authorization: Bearer TOKEN`. Il token ha 32 byte casuali codificati base64url senza padding. Qualsiasi header Origin viene rifiutato, per tenere il servizio fuori dalle richieste browser. Il client MCP disabilita redirect, proxy e radici TLS di sistema: si fida solo del certificato autenticato dal codice di pairing.
+Il listener è HTTPS. Le route operative richiedono `Authorization: Bearer TOKEN`. Il token ha 32 byte casuali codificati base64url senza padding. Qualsiasi header Origin viene rifiutato, per tenere il servizio fuori dalle richieste browser. Il client MCP disabilita redirect, proxy e radici TLS di sistema: si fida del certificato autenticato dal codice di pairing oppure dal confronto fuori banda e consenso locale della modalità IP.
 
 ## Invito
 

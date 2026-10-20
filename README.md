@@ -37,7 +37,7 @@ Le API desktop moderne sono risolte a runtime: la loro assenza non impedisce il 
 
 Implementato:
 
-- HTTPS con certificato nuovo per ogni avvio, fidato esclusivamente attraverso l'invito.
+- HTTPS con certificato nuovo per ogni avvio, autenticato tramite invito oppure confronto del codice e consenso locale.
 - Token casuale da 256 bit e scadenza, verifica di autenticazione su ogni endpoint operativo.
 - PowerShell elevata se il bridge è elevato; output, codice di uscita e timeout.
 - Lettura/scrittura di file binari e lista directory.
