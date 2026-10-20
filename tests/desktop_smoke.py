@@ -61,6 +61,7 @@ def fixture(state_path):
     text.focus_force()
     def snapshot():
         data={'events':events,'text':text.get('1.0','end-1c'),'selection':len(text.tag_ranges('sel'))>0,
+              'text_focused':root.focus_get()==text,
               'canvas_x':canvas.winfo_rootx()+canvas.winfo_width()//2,'canvas_y':canvas.winfo_rooty()+canvas.winfo_height()//2,
               'text_x':text.winfo_rootx()+50,'text_y':text.winfo_rooty()+30}
         temp=state_path.with_suffix('.tmp')
@@ -171,6 +172,7 @@ def main():
                 print('PASS vertical/horizontal wheel direction and notches',flush=True)
                 current=state()
                 call('desktop_click',{'x':current['text_x'],'y':current['text_y']})
+                wait_for(lambda s:s['text_focused'],'Text fixture did not receive focus after click')
                 content='Ciao \u00e8 \u00f1 \u6f22\u5b57 \U0001f600\nseconda riga\tfine'
                 call('desktop_type',{'text':content})
                 wait_for(lambda s:s['text']==content,'Unicode text mismatch')

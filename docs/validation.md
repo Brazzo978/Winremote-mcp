@@ -3,7 +3,7 @@
 Prove su Windows moderno, eseguite il 20 ottobre 2026 con toolchain Rust gnullvm/LLVM-MinGW e il nuovo host e client MCP reali su loopback. Non sono state usate approvazioni HTTP di test o bypass della finestra.
 
 - Formattazione e Clippy con warning negati: passati.
-- Suite Rust: 66 test passati, inclusi QR, firma Ed25519, nonce monouso, contesto alterato, autorizzazione delle route, cache e file privati.
+- Suite Rust: 67 test passati, inclusi QR, firma Ed25519, nonce monouso, contesto alterato, autorizzazione delle route, cache e file privati.
 - Smoke HTTPS/MCP: passato, con pairing testuale, autenticazione, Origin, PowerShell, screenshot, file oltre 8 MiB, checksum, timeout e pulizia dei processi.
 - Smoke della finestra: passato. QR letto da screenshot reale; Salva PNG attraverso il dialogo Windows e collegamento dal file esportato; codice di confronto identico sui due lati; Approva disabilitato prima della conferma; consenso, rifiuto, comando autenticato, Stop, X e scadenza.
 - Scadenza durante il dialogo modale Salva PNG: chiusura regolare senza crash.

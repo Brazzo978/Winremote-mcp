@@ -44,7 +44,7 @@ fn valid_short_invite(invitation: &str) -> bool {
     let Ok(url) = Url::parse(&endpoint) else {
         return false;
     };
-    if url.scheme() != "https" || url.port().is_none() || url.path() != "/" {
+    if url.scheme() != "https" || url.path() != "/" {
         return false;
     }
     match url.host() {
@@ -389,5 +389,15 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("size limit"));
+    }
+}
+
+#[cfg(test)]
+mod default_https_port_tests {
+    #[test]
+    fn qr_accepts_explicit_https_default_port() {
+        let invitation = "192.0.2.10:443:Ab7!kP2@qR9#xT4?";
+        let png = super::render_png(invitation).unwrap();
+        assert_eq!(super::decode_bytes(&png).unwrap(), invitation);
     }
 }
