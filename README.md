@@ -52,6 +52,7 @@ Gli inviti legacy `wb1_...` restano accettati dal client; il nuovo host stampa s
 
 Previsto, non ancora implementato:
 
+- Connessione da screenshot o PNG tramite QR: [progetto tecnico](docs/qr-connection-design.md).
 - Drag e Windows UI Automation per elenco finestre, accessibilita e selezione esplicita della finestra.
 - Terminale interattivo ConPTY, output progressivo, job persistenti e cancellazione tramite MCP.
 - SSH opzionale, servizio Windows e helper per la sessione desktop.

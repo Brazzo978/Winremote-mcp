@@ -34,6 +34,8 @@ Fonti:
 
 ## Prossima versione: invito tramite QR
 
+Progettazione iniziale disponibile in [Connessione tramite QR](qr-connection-design.md): formato, UI, strumento MCP, limiti e piano di verifica.
+
 Funzionalità pianificata; non presente nell'eseguibile v0.5.1.
 
 - Mostrare una finestra compatibile con Windows 7 e successivi, con QR grande, invito testuale IP:CODICE e pulsante per copiarlo.
