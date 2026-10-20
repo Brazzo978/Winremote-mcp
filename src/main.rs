@@ -32,6 +32,9 @@ enum Commands {
         /// Require an already elevated process. False permits a deliberately non-admin host.
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         require_admin: bool,
+        /// Show the QR invitation and receive requests for local approval.
+        #[arg(long)]
+        qr: bool,
     },
     /// Read an invitation from stdin and save a new private connection file.
     Pair {
@@ -89,6 +92,7 @@ async fn run() -> Result<()> {
             port,
             ttl_secs,
             require_admin,
+            qr,
         }) => {
             if bind.is_unspecified() || bind.is_multicast() {
                 bail!("Use a concrete local IP address");
@@ -99,7 +103,8 @@ async fn run() -> Result<()> {
             if !(1..=86_400).contains(&ttl_secs) {
                 bail!("Lifetime must be between 1 and 86400 seconds");
             }
-            bootstrap::run_host(SocketAddr::new(bind, port), ttl_secs, require_admin).await?;
+            bootstrap::run_host_with_ui(SocketAddr::new(bind, port), ttl_secs, require_admin, qr)
+                .await?;
         }
         Some(Commands::Pair { connection: path }) => {
             eprintln!(

@@ -94,3 +94,25 @@ Tutte le route POST richiedono bearer, rifiutano Origin e rispettano scadenza e 
 Risposta `{"sent_inputs":4}`: eventi inseriti in Windows, non conferma dell'esito applicativo. Il client MCP conserva la distinzione e deve osservare un nuovo screenshot dopo l'azione. Per trasformare un punto della screenshot ridotta usa metadati desktop_x/y, desktop_width/height e width/height.
 
 Desktop bloccato, Sessione 0, UAC e thread su un desktop differente sono rifiutati. Nessuno switch di desktop, clipboard o API di pressione persistente. Gli eventi premuti vengono rilasciati nella stessa operazione; una risposta di errore dopo un inserimento parziale non garantisce assenza di effetti e richiede nuova osservazione prima di un retry. Per i limiti UIPI vedi [SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput).
+
+## QR e consenso locale 0.6.0 (sorgente in sviluppo)
+
+Queste route e strumenti non sono presenti nella release scaricabile 0.5.1. Occorre aggiornare host e client MCP e riavviare quest'ultimo per ricaricare il catalogo.
+
+`bridge_connect_qr` legge un invito breve da PNG/JPEG locale e usa il pairing esistente. Limiti: 8 MiB compressi, lato 8192, 16.777.216 pixel, payload 512 byte e 16 candidati. Inviti diversi nella stessa immagine vengono rifiutati.
+
+La modalità IP richiede UI e consenso locale. Le nuove route pubbliche rifiutano Origin e limitano il body a 4 KiB:
+
+- POST `/v1/access/request`: client_public_key Ed25519 (32 byte base64url), client_nonce (32 byte), label facoltativa. Risposta: version, request_id (16 byte casuali), server_nonce (32 byte), endpoint, certificate_der (base64url), observed_peer_ip, expires_unix, poll_after_secs.
+- POST `/v1/access/challenge`: request_id. Risposta: server_challenge (32 byte), expires_unix. Challenge monouso valida al massimo dieci secondi, entro la richiesta.
+- POST `/v1/access/poll`: request_id, server_challenge, signature Ed25519. Risposta status pending/denied/expired; dopo consenso locale e prova valida, status approved include connection. Il ritiro consuma la richiesta.
+
+Il codice di confronto usa i primi 40 bit di un secondo SHA-256 con dominio winremote-access-sas-v1 e digest del contesto, rappresentati da dieci cifre esadecimali in due gruppi. Il contesto lega endpoint, DER TLS effettivo, chiave client, nonce client/server, ID, IP osservato e scadenza, con dominio e campi prefissati da lunghezza. La firma lega digest del contesto, ID, challenge e sua scadenza. Per i byte esatti vedi `context_digest` e `proof_payload` in [access.rs](../src/access.rs).
+
+Solo la richiesta iniziale, priva di credenziali, accetta TLS non ancora autenticato. Il client acquisisce il DER TLS effettivo, lo confronta con quello nella risposta e lo vincola alle richieste successive. L'operatore deve confrontare il codice fra client e host prima di approvare: il solo pinning del primo certificato non autentica il server.
+
+Chiave privata e contesto restano in memoria. Il server verifica firma, IP, nonce, consenso e deadline prima di consegnare il bearer. Il client verifica nuovamente DER e `/v1/info` e salva atomicamente la connessione; un errore di finalizzazione conserva la concessione per un tentativo successivo entro la scadenza.
+
+Massimo quattro richieste memorizzate, una non rifiutata per IP; dieci nuove richieste al minuto complessive e tre per IP. Challenge/poll almeno ogni due secondi. La disabilitazione invalida le richieste pendenti. Il bearer è quello della sessione host: non esiste revoca selettiva per agente.
+
+Nuovi strumenti: `bridge_connect_qr(image_path)`, `bridge_request_access(ip, port=8443, client_label?)`, `bridge_access_status(request_id, wait_secs=0)` con attesa opzionale 0..25 secondi. `bridge_request_access` restituisce `status: pending`, un codice di confronto e un handle MCP locale opaco; `pending` non è una connessione. L'operatore confronta il codice nella finestra Windows e approva solo dopo aver selezionato la casella di conferma. Il client interroga lo stato rispettando `poll_after_secs` e salva il bearer solo dopo consenso, prova e verifica di `/v1/info`. Il catalogo completo conta 21 strumenti.

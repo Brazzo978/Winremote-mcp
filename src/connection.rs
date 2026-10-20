@@ -367,3 +367,55 @@ mod tests {
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 }
+
+/// Atomically export a credential-bearing file, applying privacy before writing.
+pub fn save_private_file(path: &Path, bytes: &[u8], overwrite: bool) -> Result<()> {
+    if !path.is_absolute() {
+        bail!("Export path must be absolute");
+    }
+    if let Ok(metadata) = std::fs::symlink_metadata(path) {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if metadata.file_attributes() & 0x400 != 0 {
+                bail!("Export destination must not be a reparse point");
+            }
+        }
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            bail!("Export destination must be a regular file");
+        }
+        if !overwrite {
+            bail!("Export destination already exists");
+        }
+    }
+    let parent = path.parent().context("Export directory unavailable")?;
+    let mut file = tempfile::NamedTempFile::new_in(parent)?;
+    restrict_new_file(file.path())?;
+    file.write_all(bytes)?;
+    file.as_file().sync_all()?;
+    if overwrite {
+        file.persist(path)
+            .map_err(|_| anyhow::anyhow!("Cannot save private export"))?;
+    } else {
+        file.persist_noclobber(path)
+            .map_err(|_| anyhow::anyhow!("Cannot save private export"))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod private_export_tests {
+    use super::*;
+
+    #[test]
+    fn private_exports_do_not_clobber_without_consent_and_replace_atomically() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("invitation.png");
+        save_private_file(&path, b"first", false).unwrap();
+        assert!(save_private_file(&path, b"second", false).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"first");
+        save_private_file(&path, b"second", true).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"second");
+        assert!(save_private_file(dir.path(), b"invalid", true).is_err());
+    }
+}

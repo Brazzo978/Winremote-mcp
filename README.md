@@ -2,18 +2,18 @@
 
 Bridge Rust portabile per esporre temporaneamente una macchina Windows a Codex o a un altro agente tramite MCP.
 
-**Avvio sulla macchina da controllare:** doppio clic su `winremote-mcp.exe`, consenso UAC, copia dell'invito breve `IP:CODICE`. Il programma seleziona l'IPv4 della route predefinita, ascolta su TCP 8443 per un'ora e apre una regola firewall limitata a reti Private e LocalSubnet. Le capacità disponibili dipendono dalla versione di Windows; l'agente sceglie gli strumenti dopo averle lette da windows_info.
+**Avvio sulla macchina da controllare:** nel sorgente 0.6.0, doppio clic su `winremote-mcp.exe`, consenso UAC e finestra nativa con QR e invito breve `IP:CODICE`; la console resta aperta. Il programma seleziona l'IPv4 della route predefinita, ascolta su TCP 8443 per un'ora e apre una regola firewall limitata a reti Private e LocalSubnet. Le capacità disponibili dipendono dalla versione di Windows; l'agente le legge con `windows_info`.
 
 **Sulla macchina dell'agente:** lo stesso binario esegue un adattatore MCP locale su stdio. Si configura una volta in Codex; il pairing salva una connessione temporanea in un file privato. Non servono account Windows remoti né OpenSSH.
 
 ## Download e avvio rapido
 
-Scarica [winremote-mcp.exe dalla release v0.5.1](https://github.com/Brazzo978/Winremote-mcp/releases/tag/v0.5.1). Il pacchetto ZIP contiene anche guide, licenza, configurazioni di esempio e checksum. Per usare il binario non serve installare Rust: la distribuzione verificata è Windows x64.
+La release pubblicata è ancora [v0.5.1](https://github.com/Brazzo978/Winremote-mcp/releases/tag/v0.5.1). Contiene le funzioni precedenti, ma non QR o approvazione locale. Il sorgente 0.6.0 aggiunge queste funzioni: per usarle serve aggiornare sia host sia client MCP e riavviare il client per caricare il nuovo catalogo. Il pacchetto della 0.5.1 contiene EXE, guide, licenza, configurazioni di esempio e checksum.
 
-1. Copia l'EXE sul PC Windows da controllare, avvialo e conferma UAC. Lascia aperta la console.
+1. Copia l'EXE sul PC Windows da controllare, avvialo e conferma UAC. Nel sorgente 0.6.0 lascia aperte console e finestra QR.
 2. Sul PC Windows dell'agente, copia lo stesso EXE in un percorso stabile e registra il client MCP.
-3. Passa all'agente l'invito breve visualizzato dal bridge e chiedigli di connettersi con `bridge_connect`.
-4. L'agente sceglie fra PowerShell, file, screenshot e input desktop. Chiudi il bridge con Ctrl+C al termine.
+3. Nella 0.6.0 passa l'invito per `bridge_connect`, un'immagine PNG/JPEG locale per `bridge_connect_qr`, oppure il solo IP per chiedere accesso con approvazione sul PC Windows.
+4. L'agente verifica le capacità con `windows_info`. Chiudi il bridge con Ctrl+C, la X della finestra o **Arresta bridge** al termine.
 
 **Guide:** [installazione e configurazione MCP](docs/getting-started.md) · [problemi comuni](docs/troubleshooting.md) · [protocollo](docs/protocol.md) · [verifiche e limiti](docs/validation.md) · [contribuire e compilare](CONTRIBUTING.md) · [changelog](CHANGELOG.md).
 
@@ -21,7 +21,7 @@ Il progetto è in sviluppo: i limiti operativi riportati sotto fanno parte del c
 
 ## Compatibilità Windows
 
-Il binario portabile distribuito dalla 0.5.1 viene compilato per `x86_64-win7-windows-msvc`, ricompilando anche la libreria standard Rust e collegando staticamente il runtime C. Il target minimo del progetto è Windows 7 x64; le verifiche su Windows 7 e Server 2012 R2 effettivi sono ancora da completare.
+Il binario portabile distribuito nella 0.5.1 è compilato per `x86_64-win7-windows-msvc`, con libreria standard Rust ricompilata e runtime C statico. Windows 7 x64 resta il target del progetto; la nuova UI e i nuovi percorsi 0.6.0 richiedono ancora verifica su Windows 7 e Server 2012 R2 effettivi.
 
 | Sistema | PowerShell e file | Screenshot e input |
 |---|---|---|
@@ -29,11 +29,11 @@ Il binario portabile distribuito dalla 0.5.1 viene compilato per `x86_64-win7-wi
 | Windows 8/8.1 / Server 2012/2012 R2 | Build dedicata, prova sul sistema da completare | Disabilitati |
 | Windows 10 da 1607 / Server 2016 e successivi | Verificati su Windows moderno | Disponibili con sessione interattiva sbloccata |
 
-`windows_info` riporta `desktop_supported`, `desktop_unavailable_reason` e le sole capacità disponibili per il sistema. Il catalogo MCP mantiene 18 strumenti: su un host legacy, le chiamate desktop restituiscono un errore esplicito e gli strumenti per comandi/file continuano a essere disponibili. Non occorre scegliere una modalità all'avvio.
+`windows_info` riporta `desktop_supported`, `desktop_unavailable_reason` e le sole capacità disponibili per il sistema. Il catalogo MCP del sorgente 0.6.0 ha 21 strumenti. Su un host legacy, le chiamate desktop restituiscono un errore esplicito e gli strumenti per comandi/file continuano a essere disponibili; la finestra QR e consenso è separata dalle capacità di screenshot/input remoto.
 
 Le API desktop moderne sono risolte a runtime: la loro assenza non impedisce il caricamento dell'EXE. La CI controlla anche gli import della build Windows 7 per rilevare dipendenze statiche incompatibili. Questi controlli non sostituiscono una prova sul sistema operativo di destinazione. Vedi [compatibilità e build legacy](docs/compatibility.md).
 
-## Stato della versione 0.5.1
+## Stato del sorgente 0.6.0
 
 Implementato:
 
@@ -47,13 +47,14 @@ Implementato:
 - Input desktop: movimento, click sinistro/destro/centrale e doppio click, scroll verticale/orizzontale, testo Unicode e combinazioni di tasti.
 - Avvio di PowerShell sospeso, assegnazione a un Windows Job Object, quindi esecuzione; terminazione dei discendenti a fine comando o timeout.
 - Adattatore MCP con elenco strumenti e risultati strutturati.
+- Finestra nativa all'avvio con doppio clic: QR, invito selezionabile, scadenza, **Copia invito**, **Salva PNG...**, **Arresta bridge** e consenso locale. L'avvio esplicito `host --qr` abilita la stessa finestra.
+- `bridge_connect_qr`: decodifica locale di PNG/JPEG e pairing con l'invito breve contenuto nel QR.
+- `bridge_request_access` e `bridge_access_status`: richiesta tramite IP, confronto del codice e approvazione nella finestra Windows, senza condividere una password.
 
 Gli inviti legacy `wb1_...` restano accettati dal client; il nuovo host stampa soltanto il formato breve. Per usarlo occorre aggiornare sia host sia client MCP.
 
 Previsto, non ancora implementato:
 
-- Connessione da screenshot o PNG tramite QR: [progetto tecnico](docs/qr-connection-design.md).
-- Richiesta con solo IP e approvazione sul PC Windows, senza passare una password all'agente: [progetto di consenso locale](docs/local-access-approval-design.md).
 - Drag e Windows UI Automation per elenco finestre, accessibilita e selezione esplicita della finestra.
 - Terminale interattivo ConPTY, output progressivo, job persistenti e cancellazione tramite MCP.
 - SSH opzionale, servizio Windows e helper per la sessione desktop.
@@ -65,13 +66,13 @@ Il server non è un ambiente isolato: PowerShell e operazioni sui file hanno i p
 
 ### 1. Macchina Windows da controllare
 
-Esegui il binario senza argomenti. Conferma il consenso UAC locale. L'invito appare nella console, che deve rimanere aperta. Esempio: `192.168.1.50:Ab7!kP2@qR9#xT4?`. Il codice casuale ha 16 caratteri e contiene almeno una maiuscola, una minuscola, una cifra e un simbolo tra `- _ ! @ # $ % & * + = ?`. Con una porta diversa da 8443 il formato è `IP:PORTA:CODICE`. I due punti separano i campi e non fanno parte del codice.
+Esegui il binario senza argomenti. Conferma il consenso UAC locale. Nel sorgente 0.6.0 si apre la finestra QR e l'invito resta anche nella console. Esempio: `192.168.1.50:Ab7!kP2@qR9#xT4?`. Il codice casuale ha 16 caratteri e contiene almeno una maiuscola, una minuscola, una cifra e un simbolo tra `- _ ! @ # $ % & * + = ?`. Con una porta diversa da 8443 il formato è `IP:PORTA:CODICE`. I due punti separano i campi e non fanno parte del codice.
 
 Per scegliere esplicitamente IP e porta, usa un terminale elevato:
 
 ```powershell
 
-.\winremote-mcp.exe host --bind 192.168.1.50 --port 8443 --ttl-secs 3600
+.\winremote-mcp.exe host --bind 192.168.1.50 --port 8443 --ttl-secs 3600 --qr
 
 ```
 
@@ -83,13 +84,19 @@ Per un test locale con i soli privilegi dell'utente corrente:
 
 ```
 
-Il default del sottocomando `host` è loopback. L'avvio senza argomenti seleziona invece un IP raggiungibile secondo la route IPv4 predefinita: con VPN o più schede, usa `--bind` per scegliere la LAN corretta. La regola firewall automatica viene aggiunta solo con host elevato e IP diverso da loopback, e consente rete Private + LocalSubnet. Le policy aziendali possono impedirla. Le reti Public non vengono aperte automaticamente.
+Il default del sottocomando `host` è loopback e non apre la finestra; `--qr` la abilita esplicitamente. L'avvio senza argomenti seleziona invece un IP raggiungibile secondo la route IPv4 predefinita: con VPN o più schede, usa `--bind` per scegliere la LAN corretta. La regola firewall automatica viene aggiunta solo con host elevato e IP diverso da loopback, e consente rete Private + LocalSubnet. Le policy aziendali possono impedirla. Le reti Public non vengono aperte automaticamente.
 
-Arresta con Ctrl+C. Dopo la scadenza il listener si chiude. Ogni nuovo avvio genera token e certificato diversi: occorre un nuovo pairing.
+Arresta con Ctrl+C, la X della finestra o **Arresta bridge**. Dopo la scadenza il listener si chiude. Ogni nuovo avvio genera token e certificato diversi: occorre un nuovo pairing.
 
 ### 2. Macchina di Codex: connessione e pairing
 
 Puoi configurare prima il client MCP e dare l'invito all'agente, chiedendogli di usare lo strumento `bridge_connect`. Il client verifica il server e salva la connessione privata; un nuovo invito sostituisce atomicamente la connessione precedente. Non serve un pairing manuale a ogni avvio.
+
+Con la 0.6.0 puoi passare all'agente un PNG o JPEG contenente il QR e chiedere `bridge_connect_qr` con `image_path`, percorso **assoluto sul PC dell'agente**. Se l'immagine è allegata alla chat ma il processo MCP non può leggerla, salvala prima su quel PC. Il decoder locale accetta solo file regolari PNG/JPEG fino a 8 MiB, immagini fino a 8192 pixel per lato e 16.777.216 pixel totali; ignora QR estranei e rifiuta inviti validi diversi nella stessa immagine. Il pulsante **Salva PNG...** scrive l'invito nel percorso scelto sul PC Windows: tratta quel file come una credenziale e cancellalo quando non serve più. **Copia invito** mette il testo negli appunti solo quando lo premi.
+
+Per chiedere accesso senza comunicare l'invito, mantieni aperta la finestra Windows e attiva **Ricevi richieste di accesso**. L'agente chiama `bridge_request_access` con l'IP del PC controllato; la porta predefinita è 8443 e `client_label` è facoltativa. Il risultato `pending` include `verification_code` e un `request_id` locale opaco. Mostra il codice all'utente: sul PC Windows confrontalo con quello nella richiesta, verifica l'IP sorgente osservato e i privilegi indicati, spunta **Il codice corrisponde a quello mostrato dal mio agente** e premi **Approva**. Il nome dichiarato dal client non è verificato. Poi l'agente chiama `bridge_access_status` con `request_id`, rispettando `poll_after_secs` (almeno due secondi); `wait_secs` opzionale va da 0 a 25. `pending` non significa connesso. **Rifiuta**, scadenza o disattivazione della ricezione chiudono la richiesta senza creare una connessione. La modalità richiede la finestra: se la UI non si avvia, resta disponibile l'invito testuale.
+
+Le richieste scadono entro 120 secondi e comunque alla fine della sessione; al massimo quattro sono pendenti, con limite di dieci nuove richieste al minuto e tre per IP. Disattivare **Ricevi richieste di accesso** cancella solo le richieste in attesa: i client già connessi conservano il bearer condiviso della sessione. **Arresta bridge** o la scadenza revocano tutti gli accessi; la revoca selettiva per client non è disponibile. Non condividere password Windows o il codice dell'invito per questo flusso.
 
 Per il pairing manuale opzionale, crea la connessione con lo stesso binario, poi incolla l'invito al prompt. Evita di mettere il token nella riga di comando, nel repository o nei messaggi di log.
 
@@ -126,6 +133,9 @@ Un prompt iniziale utile:
 | Strumento | Argomenti |
 |---|---|
 | `bridge_connect` | `invitation` (invito breve `IP:CODICE`) |
+| `bridge_connect_qr` | `image_path` assoluto sul PC dell'agente, PNG/JPEG locale |
+| `bridge_request_access` | `ip` concreto; `port` opzionale (8443), `client_label` opzionale |
+| `bridge_access_status` | `request_id` locale; `wait_secs` opzionale (0–25) |
 | `windows_info` | nessuno |
 | `desktop_screenshot` | `max_width` opzionale, default 1920 (320–3840) |
 | `desktop_move` | `x`, `y` fisici nel desktop virtuale |
@@ -175,7 +185,7 @@ Lo strumento `desktop_screenshot` cattura ciò che è visibile sul desktop virtu
 
 È necessaria una sessione interattiva sbloccata; il modulo rifiuta Sessione 0, lock screen e desktop protetto UAC. Finestre coperte non vengono mostrate per intero; contenuti protetti possono apparire neri. Massimo 16 milioni di pixel nell'immagine ridotta e 2 MiB nel PNG: il modulo riduce ulteriormente la risoluzione se il PNG supera il limite.
 
-Aggiorna host e client MCP alla versione 0.5.1 per avere anche gli input desktop. Il pairing breve resta invariato.
+Per usare i nuovi strumenti 0.6.0 aggiorna host e client MCP, poi riavvia il processo MCP per ricaricare il catalogo. Un EXE client già in esecuzione può impedire di sovrascrivere il file: arresta quel processo prima dell'aggiornamento. Il pairing breve resta invariato.
 
 ## Input desktop
 

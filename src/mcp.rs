@@ -1,5 +1,10 @@
 //! Sequential stdio MCP adapter. Request cancellation is not supported in this MVP.
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    net::IpAddr,
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 
 use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -15,7 +20,10 @@ use crate::protocol::{
     ScreenshotResult, WriteFileRequest, MAX_REQUEST_BYTES, MAX_SCREENSHOT_BYTES,
     MAX_SCREENSHOT_PIXELS,
 };
-use crate::{connection, desktop_input, transfer};
+use crate::{
+    access_client::{AccessClient, ClientPoll, PendingAccess},
+    connection, desktop_input, qr, transfer,
+};
 
 const SUPPORTED_VERSIONS: [&str; 4] = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 const DEFAULT_VERSION: &str = "2025-11-25";
@@ -24,6 +32,15 @@ const DEFAULT_VERSION: &str = "2025-11-25";
 struct Session {
     initialized: bool,
     version: Option<String>,
+    access: HashMap<String, AccessEntry>,
+}
+
+struct AccessEntry {
+    pending: Option<PendingAccess>,
+    approved: Option<crate::protocol::Connection>,
+    result: Option<Value>,
+    next_poll: Instant,
+    expires_unix: u64,
 }
 
 pub async fn run(connection_path: PathBuf) -> Result<()> {
@@ -124,6 +141,7 @@ async fn handle_line(line: &[u8], session: &mut Session, path: &Path) -> Option<
             };
             session.version = Some(selected.to_owned());
             session.initialized = false;
+            session.access.clear();
             Some(rpc_result(
                 response_id,
                 json!({
@@ -144,14 +162,11 @@ async fn handle_line(line: &[u8], session: &mut Session, path: &Path) -> Option<
                 .get("arguments")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            let result = match invoke_tool(
-                name,
-                arguments,
-                path,
-                session.version.as_deref().unwrap_or(DEFAULT_VERSION),
-            )
-            .await
-            {
+            let version = session
+                .version
+                .clone()
+                .unwrap_or_else(|| DEFAULT_VERSION.into());
+            let result = match invoke_tool(name, arguments, path, &version, session).await {
                 Ok(value) => value,
                 Err(ToolFailure::InvalidArguments) => {
                     return Some(rpc_error(response_id, -32602, "invalid tool arguments"));
@@ -218,6 +233,15 @@ fn tools_list() -> Vec<Value> {
                 "required":["invitation"], "additionalProperties":false
             }),
         ),
+        tool("bridge_connect_qr", "Decode a local PNG or JPEG invitation QR and connect to the Windows bridge", json!({
+            "type":"object","properties":{"image_path":{"type":"string"}},"required":["image_path"],"additionalProperties":false
+        })),
+        tool("bridge_request_access", "Request access using only an IP. Show the returned comparison code to the user; they must compare it and approve on the Windows PC. No password is required.", json!({
+            "type":"object","properties":{"ip":{"type":"string"},"port":{"type":"integer","minimum":1,"maximum":65535,"default":8443},"client_label":{"type":"string","maxLength":64}},"required":["ip"],"additionalProperties":false
+        })),
+        tool("bridge_access_status", "Check a pending local approval request and save the connection after approval. pending is normal; respect poll_after_secs. request_id is the local handle returned by bridge_request_access.", json!({
+            "type":"object","properties":{"request_id":{"type":"string"},"wait_secs":{"type":"integer","minimum":0,"maximum":25,"default":0}},"required":["request_id"],"additionalProperties":false
+        })),
         tool(
             "windows_info",
             "Get Windows host information and capabilities",
@@ -336,6 +360,30 @@ struct ConnectArguments {
     invitation: String,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct QrArguments {
+    image_path: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RequestAccessArguments {
+    ip: String,
+    #[serde(default = "default_access_port")]
+    port: u16,
+    client_label: Option<String>,
+}
+fn default_access_port() -> u16 {
+    8443
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AccessStatusArguments {
+    request_id: String,
+    #[serde(default)]
+    wait_secs: u64,
+}
+
 fn parse_args<T: DeserializeOwned>(value: Value) -> std::result::Result<T, ToolFailure> {
     serde_json::from_value(value).map_err(|_| ToolFailure::InvalidArguments)
 }
@@ -345,7 +393,184 @@ async fn invoke_tool(
     arguments: Value,
     path: &Path,
     version: &str,
+    session: &mut Session,
 ) -> std::result::Result<Value, ToolFailure> {
+    if name == "bridge_connect_qr" {
+        let args: QrArguments = parse_args(arguments)?;
+        let image = PathBuf::from(args.image_path);
+        if !image.is_absolute() {
+            return Err(ToolFailure::InvalidArguments);
+        }
+        let invitation = tokio::task::spawn_blocking(move || qr::decode_file(&image))
+            .await
+            .map_err(|_| ToolFailure::Execution("QR decoder unavailable".into()))?
+            .map_err(|error| ToolFailure::Execution(error.to_string()))?;
+        return connect_bridge(invitation, path, version).await;
+    }
+    if name == "bridge_request_access" {
+        let args: RequestAccessArguments = parse_args(arguments)?;
+        let ip: IpAddr = args.ip.parse().map_err(|_| ToolFailure::InvalidArguments)?;
+        if args.port == 0
+            || ip.is_unspecified()
+            || ip.is_multicast()
+            || matches!(ip, IpAddr::V4(ip) if ip.is_broadcast())
+            || args
+                .client_label
+                .as_deref()
+                .is_some_and(|v| v.len() > 64 || v.chars().any(|c| c.is_control()))
+        {
+            return Err(ToolFailure::InvalidArguments);
+        }
+        let now = connection::now_unix().unwrap_or(u64::MAX);
+        session.access.retain(|_, entry| entry.expires_unix > now);
+        if session.access.len() >= 8 {
+            if let Some(completed) = session
+                .access
+                .iter()
+                .find(|(_, entry)| entry.result.is_some())
+                .map(|(id, _)| id.clone())
+            {
+                session.access.remove(&completed);
+            }
+        }
+        if session.access.len() >= 8 {
+            return Err(ToolFailure::Execution(
+                "too many local access requests".into(),
+            ));
+        }
+        let pending = AccessClient::begin(ip, args.port, args.client_label).await
+            .map_err(|_| ToolFailure::Execution("access request failed; check the IP and enable requests in the Windows bridge window".into()))?;
+        let handle = crate::pairing::new_nonce();
+        let summary = json!({"status":"pending", "request_id":handle, "endpoint":pending.endpoint,
+            "verification_code":pending.verification_code, "expires_unix":pending.expires_unix,
+            "poll_after_secs":pending.poll_after_secs,
+            "instructions":"Show this comparison code to the user. They must compare it on the Windows PC and approve locally; do not treat the request as connected yet."});
+        let expires_unix = pending.expires_unix;
+        session.access.insert(
+            handle,
+            AccessEntry {
+                pending: Some(pending),
+                approved: None,
+                result: None,
+                next_poll: Instant::now(),
+                expires_unix,
+            },
+        );
+        return tool_success(summary, false, version);
+    }
+    if name == "bridge_access_status" {
+        let args: AccessStatusArguments = parse_args(arguments)?;
+        if args.wait_secs > 25 || args.request_id.len() > 128 {
+            return Err(ToolFailure::InvalidArguments);
+        }
+        let Some(entry) = session.access.get_mut(&args.request_id) else {
+            return Err(ToolFailure::Execution(
+                "local access request unavailable; create a new request".into(),
+            ));
+        };
+        let now = connection::now_unix().unwrap_or(u64::MAX);
+        if let Some(grant) = &entry.approved {
+            if grant.expires_unix <= now {
+                entry.approved = None;
+                entry.result = None;
+                return tool_success(
+                    json!({"status":"expired","connected":false}),
+                    false,
+                    version,
+                );
+            }
+            if let Some(result) = &entry.result {
+                let matches_saved = connection::load(path).is_ok_and(|saved| {
+                    saved.endpoint == grant.endpoint
+                        && saved.token == grant.token
+                        && saved.certificate_pem == grant.certificate_pem
+                        && saved.expires_unix == grant.expires_unix
+                });
+                if matches_saved {
+                    return Ok(result.clone());
+                }
+                return tool_success(
+                    json!({"status":"unavailable","connected":false,
+                    "reason":"The saved connection was removed or replaced."}),
+                    false,
+                    version,
+                );
+            }
+            let result = finalize_bridge_connection(grant.clone(), path, version).await?;
+            entry.result = Some(result.clone());
+            return Ok(result);
+        }
+        if let Some(result) = &entry.result {
+            return Ok(result.clone());
+        }
+        let deadline = Instant::now() + Duration::from_secs(args.wait_secs);
+        loop {
+            if connection::now_unix().unwrap_or(u64::MAX) >= entry.expires_unix {
+                entry.pending = None;
+                let result = tool_success(
+                    json!({"status":"expired","connected":false}),
+                    false,
+                    version,
+                )?;
+                entry.result = Some(result.clone());
+                return Ok(result);
+            }
+            let now = Instant::now();
+            if now < entry.next_poll {
+                if deadline <= now || entry.next_poll > deadline {
+                    return tool_success(
+                        json!({"status":"pending","connected":false,"poll_after_secs":2}),
+                        false,
+                        version,
+                    );
+                }
+                tokio::time::sleep_until(entry.next_poll.into()).await;
+            }
+            let pending = entry
+                .pending
+                .as_mut()
+                .ok_or_else(|| ToolFailure::Execution("local access request unavailable".into()))?;
+            let outcome = pending.poll().await;
+            entry.next_poll = Instant::now() + Duration::from_secs(2);
+            match outcome {
+                Ok(ClientPoll::Pending) => {
+                    if Instant::now() >= deadline {
+                        return tool_success(
+                            json!({"status":"pending","connected":false,"poll_after_secs":2}),
+                            false,
+                            version,
+                        );
+                    }
+                }
+                Ok(ClientPoll::Approved(connection)) => {
+                    entry.pending = None;
+                    entry.expires_unix = connection.expires_unix;
+                    entry.approved = Some(connection.clone());
+                    let result = finalize_bridge_connection(connection, path, version).await?;
+                    entry.result = Some(result.clone());
+                    return Ok(result);
+                }
+                Ok(ClientPoll::Denied) | Ok(ClientPoll::Expired) => {
+                    let status = if matches!(outcome, Ok(ClientPoll::Denied)) {
+                        "denied"
+                    } else {
+                        "expired"
+                    };
+                    entry.pending = None;
+                    let result =
+                        tool_success(json!({"status":status,"connected":false}), false, version)?;
+                    entry.result = Some(result.clone());
+                    return Ok(result);
+                }
+                Err(_) => {
+                    return Err(ToolFailure::Execution(
+                        "access status unavailable; the request may have expired or been disabled"
+                            .into(),
+                    ))
+                }
+            }
+        }
+    }
     if name == "bridge_connect" {
         let args: ConnectArguments = parse_args(arguments)?;
         if args.invitation.len() > 32768 {
@@ -627,6 +852,14 @@ async fn connect_bridge(
     let connection = connection::resolve_invitation(&invitation)
         .await
         .map_err(|_| ToolFailure::Execution("invalid or expired invitation".into()))?;
+    finalize_bridge_connection(connection, path, version).await
+}
+
+async fn finalize_bridge_connection(
+    connection: crate::protocol::Connection,
+    path: &Path,
+    version: &str,
+) -> std::result::Result<Value, ToolFailure> {
     let client = connection::http_client(&connection)
         .map_err(|_| ToolFailure::Execution("secure client unavailable".into()))?;
     let response = client
@@ -699,7 +932,7 @@ mod tests {
         ]).await;
         assert_eq!(values.len(), 2);
         assert_eq!(values[0]["result"]["protocolVersion"], "2025-06-18");
-        assert_eq!(values[1]["result"]["tools"].as_array().unwrap().len(), 18);
+        assert_eq!(values[1]["result"]["tools"].as_array().unwrap().len(), 21);
         assert_eq!(values[1]["result"]["tools"][0]["name"], "file_upload");
         let tools = values[1]["result"]["tools"].as_array().unwrap();
         for name in [
@@ -816,5 +1049,106 @@ mod tests {
         assert_eq!(values[1]["error"]["code"], -32000);
         assert_eq!(values[2]["result"]["protocolVersion"], DEFAULT_VERSION);
         assert_eq!(values[3]["error"]["code"], -32601);
+    }
+}
+
+#[cfg(test)]
+mod access_cache_tests {
+    use super::*;
+
+    fn session_with_grant(expires_unix: u64, completed: bool) -> Session {
+        let mut session = Session::default();
+        session.access.insert(
+            "test-handle".into(),
+            AccessEntry {
+                pending: None,
+                approved: Some(crate::protocol::Connection {
+                    version: 1,
+                    endpoint: "https://127.0.0.1:1".into(),
+                    token: "invalid-test-token".into(),
+                    certificate_pem: "invalid-test-certificate".into(),
+                    expires_unix,
+                }),
+                result: completed.then(|| json!({"structuredContent":{"connected":true}})),
+                next_poll: Instant::now(),
+                expires_unix,
+            },
+        );
+        session
+    }
+
+    #[tokio::test]
+    async fn cached_success_expires_and_does_not_claim_removed_credentials() {
+        let mut expired = session_with_grant(0, true);
+        let result = invoke_tool(
+            "bridge_access_status",
+            json!({"request_id":"test-handle"}),
+            Path::new("unused"),
+            DEFAULT_VERSION,
+            &mut expired,
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["structuredContent"]["status"], "expired");
+        assert_eq!(result["structuredContent"]["connected"], false);
+        let mut removed = session_with_grant(connection::now_unix().unwrap() + 120, true);
+        let dir = tempfile::tempdir().unwrap();
+        let result = invoke_tool(
+            "bridge_access_status",
+            json!({"request_id":"test-handle"}),
+            &dir.path().join("missing.json"),
+            DEFAULT_VERSION,
+            &mut removed,
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["structuredContent"]["status"], "unavailable");
+        assert_eq!(result["structuredContent"]["connected"], false);
+    }
+
+    #[tokio::test]
+    async fn approved_grant_survives_a_finalization_failure_for_retry() {
+        let mut session = session_with_grant(connection::now_unix().unwrap() + 120, false);
+        for _ in 0..2 {
+            let result = invoke_tool(
+                "bridge_access_status",
+                json!({"request_id":"test-handle"}),
+                Path::new("unused"),
+                DEFAULT_VERSION,
+                &mut session,
+            )
+            .await;
+            assert!(
+                matches!(result,Err(ToolFailure::Execution(message)) if message=="secure client unavailable")
+            );
+            assert!(session.access["test-handle"].approved.is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn new_tools_reject_arguments_before_network_or_connection_access() {
+        let mut session = Session::default();
+        for (name, args) in [
+            ("bridge_connect_qr", json!({"image_path":"relative.png"})),
+            ("bridge_request_access", json!({"ip":"example.com"})),
+            ("bridge_request_access", json!({"ip":"0.0.0.0"})),
+            ("bridge_request_access", json!({"ip":"127.0.0.1","port":0})),
+            (
+                "bridge_access_status",
+                json!({"request_id":"missing","wait_secs":26}),
+            ),
+        ] {
+            assert!(matches!(
+                invoke_tool(
+                    name,
+                    args,
+                    Path::new("unused"),
+                    DEFAULT_VERSION,
+                    &mut session
+                )
+                .await,
+                Err(ToolFailure::InvalidArguments)
+            ));
+        }
     }
 }

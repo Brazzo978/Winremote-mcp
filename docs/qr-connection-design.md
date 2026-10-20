@@ -1,6 +1,6 @@
 # Proposta: connessione tramite QR
 
-Stato: progetto tecnico, non implementato. Base verificata: v0.5.1, commit 69f2bc5.
+Stato: progetto di riferimento implementato nella build 0.6.0. Per il comportamento attuale vedi [guida rapida](getting-started.md) e [protocollo](protocol.md); sotto restano le decisioni e verifiche del progetto. Base verificata: v0.5.1, commit 69f2bc5.
 Destinazione proposta: v0.6.0. Il percorso QR riusa le route HTTPS v1 esistenti; la modalità aggiuntiva con approvazione locale richiede nuove route opzionali.
 
 ## Obiettivo e flusso utente

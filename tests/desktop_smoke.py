@@ -121,7 +121,7 @@ def main():
                     return result['result']
                 rpc('initialize',{'protocolVersion':'2025-11-25','capabilities':{},'clientInfo':{'name':'desktop-test','version':'1'}})
                 rpc('notifications/initialized',notify=True)
-                assert len(rpc('tools/list')['tools'])==18
+                assert len(rpc('tools/list')['tools'])==21
                 def raw(name,arguments):return rpc('tools/call',{'name':name,'arguments':arguments})
                 def call(name,arguments):
                     r=raw(name,arguments)

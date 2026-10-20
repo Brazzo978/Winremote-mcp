@@ -1,6 +1,6 @@
 # Proposta: richiesta di accesso tramite IP e approvazione locale
 
-Stato: progetto tecnico, non implementato. Estensione della [connessione QR](qr-connection-design.md).
+Stato: progetto di riferimento implementato nella build 0.6.0. Per il comportamento attuale vedi [guida rapida](getting-started.md) e [protocollo](protocol.md); sotto restano le decisioni e verifiche del progetto. Estensione della [connessione QR](qr-connection-design.md).
 Base: v0.5.1. Le route HTTPS e gli strumenti MCP riportati qui sono proposte, non disponibili nella release attuale.
 
 ## Obiettivo

@@ -13,3 +13,9 @@ pub mod fileshare;
 pub mod transfer;
 
 pub mod desktop_input;
+
+pub mod qr;
+
+pub mod access;
+pub mod access_client;
+pub mod pairing_ui;

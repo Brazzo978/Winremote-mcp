@@ -205,7 +205,7 @@ def main():
                 assert initialized["protocolVersion"] == "2025-11-25"
                 rpc("notifications/initialized", notification=True)
                 names = {item["name"] for item in rpc("tools/list")["tools"]}
-                assert names == {"windows_info", "powershell_execute", "file_read", "file_write", "directory_list", "bridge_connect", "desktop_screenshot", "file_upload", "file_download", "file_stat", "file_copy", "file_move", "directory_create", "desktop_move", "desktop_click", "desktop_scroll", "desktop_type", "desktop_key"}
+                assert names == {"windows_info", "powershell_execute", "file_read", "file_write", "directory_list", "bridge_connect", "desktop_screenshot", "file_upload", "file_download", "file_stat", "file_copy", "file_move", "directory_create", "desktop_move", "desktop_click", "desktop_scroll", "desktop_type", "desktop_key", "bridge_connect_qr", "bridge_request_access", "bridge_access_status"}
                 def call(name, arguments, failed=False):
                     result = rpc("tools/call", {"name": name, "arguments": arguments})
                     assert bool(result.get("isError", False)) == failed, "unexpected tool status"

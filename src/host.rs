@@ -12,6 +12,7 @@ use crate::protocol::{
     UploadCommitRequest, WriteFileRequest, MAX_FILE_BYTES, MAX_OUTPUT_BYTES, MAX_REQUEST_BYTES,
     MAX_TIMEOUT_SECS, MAX_TRANSFER_CHUNK_BYTES,
 };
+use crate::{access, pairing_ui};
 use anyhow::{Context, Result};
 use axum::{
     body::Bytes,
@@ -57,6 +58,7 @@ fn internal(e: impl std::fmt::Display) -> ApiError {
 
 struct HostState {
     token: String,
+    access: Arc<access::AccessManager>,
     pairing_code: String,
     endpoint: String,
     certificate_pem: String,
@@ -728,6 +730,67 @@ async fn fs_mkdir(
     let _permit = state.operation().await?;
     Ok(Json(file_job(move || fileshare::mkdir(req)).await?))
 }
+fn access_error(error: access::AccessError) -> ApiError {
+    ApiError(
+        StatusCode::from_u16(error.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        error.message().into(),
+    )
+}
+async fn access_request(
+    State(state): State<Arc<HostState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(request): Json<access::BeginRequest>,
+) -> Result<Json<access::BeginResponse>, ApiError> {
+    let response = state
+        .access
+        .begin(peer.ip(), request)
+        .map_err(access_error)?;
+    eprintln!(
+        "[{}] Access requested from {} (local approval pending).",
+        utc_clock(unix_now()),
+        peer.ip()
+    );
+    Ok(Json(response))
+}
+async fn access_challenge(
+    State(state): State<Arc<HostState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(request): Json<access::ChallengeRequest>,
+) -> Result<Json<access::ChallengeResponse>, ApiError> {
+    Ok(Json(
+        state
+            .access
+            .challenge(peer.ip(), request)
+            .map_err(access_error)?,
+    ))
+}
+async fn access_poll(
+    State(state): State<Arc<HostState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(request): Json<access::PollRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let outcome = state
+        .access
+        .poll(peer.ip(), request)
+        .map_err(access_error)?;
+    let mut response = serde_json::to_value(outcome).map_err(internal)?;
+    if outcome == access::PollOutcome::Approved {
+        if state.expired() {
+            return Err(ApiError(StatusCode::GONE, "host session expired".into()));
+        }
+        response["connection"] = serde_json::to_value(Connection {
+            version: 1,
+            endpoint: state.endpoint.clone(),
+            token: state.token.clone(),
+            certificate_pem: state.certificate_pem.clone(),
+            expires_unix: state.expires_unix,
+        })
+        .map_err(internal)?;
+        state.authenticated_contact(Some(peer.ip()), true).await;
+    }
+    Ok(Json(response))
+}
+
 fn router(state: Arc<HostState>) -> Router {
     let protected = Router::new()
         .route("/v1/info", get(info))
@@ -758,6 +821,9 @@ fn router(state: Arc<HostState>) -> Router {
     let pairing = Router::new()
         .route("/v1/pair/challenge", post(pair_challenge))
         .route("/v1/pair/finish", post(pair_finish))
+        .route("/v1/access/request", post(access_request))
+        .route("/v1/access/challenge", post(access_challenge))
+        .route("/v1/access/poll", post(access_poll))
         .layer(DefaultBodyLimit::max(4096));
     protected
         .merge(pairing)
@@ -765,6 +831,15 @@ fn router(state: Arc<HostState>) -> Router {
         .with_state(state)
 }
 pub async fn run(bind: SocketAddr, ttl_secs: u64, require_admin: bool) -> Result<()> {
+    run_with_ui(bind, ttl_secs, require_admin, false).await
+}
+
+pub async fn run_with_ui(
+    bind: SocketAddr,
+    ttl_secs: u64,
+    require_admin: bool,
+    show_ui: bool,
+) -> Result<()> {
     anyhow::ensure!(
         ttl_secs > 0 && ttl_secs <= 24 * 3600,
         "ttl_secs must be between 1 and 86400"
@@ -801,14 +876,18 @@ pub async fn run(bind: SocketAddr, ttl_secs: u64, require_admin: bool) -> Result
     let actual = listener.local_addr()?;
     let endpoint = format!("https://{actual}");
     let pairing_code = pairing::generate_code();
-    let invitation = match actual {
-        SocketAddr::V4(addr) if addr.port() == 8443 => format!("{}:{pairing_code}", addr.ip()),
-        SocketAddr::V4(addr) => format!("{}:{}:{pairing_code}", addr.ip(), addr.port()),
-        SocketAddr::V6(addr) => format!("[{}]:{}:{pairing_code}", addr.ip(), addr.port()),
-    };
+    let invitation = pairing::format_short_invite(actual, &pairing_code)?;
+    let deadline = Instant::now() + Duration::from_secs(ttl_secs);
+    let access = Arc::new(access::AccessManager::new(
+        endpoint.clone(),
+        cert.der().as_ref().to_vec(),
+        expires_unix,
+        deadline,
+    ));
     let (shutdown_tx, _) = watch::channel(false);
     let state = Arc::new(HostState {
         token,
+        access,
         pairing_code,
         endpoint,
         certificate_pem: cert_pem,
@@ -816,7 +895,7 @@ pub async fn run(bind: SocketAddr, ttl_secs: u64, require_admin: bool) -> Result
         agents: Mutex::new(HashMap::new()),
         uploads: Arc::new(fileshare::UploadManager::new()),
         expires_unix,
-        deadline: Instant::now() + Duration::from_secs(ttl_secs),
+        deadline,
         shell,
         elevated,
         semaphore: Arc::new(Semaphore::new(1)),
@@ -843,20 +922,77 @@ pub async fn run(bind: SocketAddr, ttl_secs: u64, require_admin: bool) -> Result
         .handle(handle.clone())
         .serve(routes.into_make_service_with_connect_info::<SocketAddr>());
     println!("{invitation}");
-    tokio::pin!(server);
-    let outcome = tokio::select! {
-        result = &mut server => result.context("HTTPS server failed"),
-        _ = tokio::time::sleep_until(state.deadline.into()) => {
-            state.shutdown.send_replace(true);
-            handle.shutdown();
-            server.await.context("HTTPS server shutdown failed")
-        },
-        _ = tokio::signal::ctrl_c() => {
-            state.shutdown.send_replace(true);
-            handle.shutdown();
-            server.await.context("HTTPS server shutdown failed")
-        },
+    let (mut ui, mut ui_events) = if show_ui {
+        match pairing_ui::start(pairing_ui::UiConfig {
+            invitation,
+            expires_unix,
+        }) {
+            Ok((ui, events)) => (Some(ui), Some(events)),
+            Err(_) => {
+                eprintln!("Pairing window unavailable; use the text invitation. IP access requests are disabled.");
+                (None, None)
+            }
+        }
+    } else {
+        (None, None)
     };
+    let mut ui_tick = tokio::time::interval(Duration::from_millis(250));
+    tokio::pin!(server);
+    let outcome = loop {
+        tokio::select! {
+            result = &mut server => break result.context("HTTPS server failed"),
+            _ = tokio::time::sleep_until(state.deadline.into()) => {
+                state.shutdown.send_replace(true);
+                handle.shutdown();
+                break server.await.context("HTTPS server shutdown failed");
+            },
+            _ = tokio::signal::ctrl_c() => {
+                state.shutdown.send_replace(true);
+                handle.shutdown();
+                break server.await.context("HTTPS server shutdown failed");
+            },
+            event = async {
+                match ui_events.as_mut() {
+                    Some(events) => events.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                match event {
+                    Some(pairing_ui::UiEvent::SetAccessEnabled(enabled)) => state.access.set_enabled(enabled),
+                    Some(pairing_ui::UiEvent::Decide{request_id,approve}) => {
+                        if state.access.decide(&request_id,approve).is_ok() {
+                            eprintln!("[{}] Access request {} locally.",utc_clock(unix_now()),if approve {"approved"}else{"denied"});
+                        }
+                    },
+                    Some(pairing_ui::UiEvent::Stop) => {
+                        state.access.shutdown();
+                        state.shutdown.send_replace(true);
+                        handle.shutdown();
+                        break server.await.context("HTTPS server shutdown failed");
+                    },
+                    None => {
+                        state.access.set_enabled(false);
+                        ui_events = None;
+                        ui = None;
+                        eprintln!("Pairing window closed unexpectedly; IP access requests disabled.");
+                    }
+                }
+            },
+            _ = ui_tick.tick(), if ui.is_some() => {
+                if let Some(window) = &ui {
+                    let prompts = state.access.pending_views().into_iter().map(|item| pairing_ui::AccessPrompt {
+                        id:item.request_id,peer:item.peer_ip.to_string(),label:item.label,
+                        code:item.verification_code,expires_unix:item.expires_unix,elevated:state.elevated
+                    }).collect();
+                    window.show_requests(prompts);
+                }
+            },
+        }
+    };
+    state.access.shutdown();
+    if let Some(window) = ui {
+        window.close();
+    }
     state.shutdown.send_replace(true);
     let _ = cleanup_task.await;
     state.uploads.abort_all();
@@ -1163,6 +1299,12 @@ mod tests {
         let (shutdown, _) = watch::channel(false);
         Arc::new(HostState {
             token: "test-token".into(),
+            access: Arc::new(access::AccessManager::new(
+                "https://127.0.0.1:8443".into(),
+                vec![],
+                unix_now() + 60,
+                Instant::now() + Duration::from_secs(60),
+            )),
             pairing_code: "Abcdefgh12345!@#".into(),
             endpoint: "https://127.0.0.1:8443".into(),
             certificate_pem: "test-certificate".into(),
@@ -1637,5 +1779,156 @@ mod powershell_cwd_tests {
             process::powershell_cwd(std::path::Path::new(&format!(r"C:\{}", "a".repeat(260))))
                 .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod access_route_tests {
+    use super::*;
+    use axum::{
+        body::{to_bytes, Body},
+        http::{Method, Request},
+    };
+    use ring::signature::{Ed25519KeyPair, KeyPair};
+    use serde_json::{json, Value};
+    use tower::ServiceExt;
+
+    async fn post(
+        state: Arc<HostState>,
+        peer: SocketAddr,
+        path: &str,
+        body: Value,
+    ) -> (StatusCode, Value) {
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri(path)
+            .header(header::CONTENT_TYPE, "application/json")
+            .extension(ConnectInfo(peer))
+            .body(Body::from(body.to_string()))
+            .unwrap();
+        let response = router(state).oneshot(request).await.unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    async fn signed_poll(
+        state: Arc<HostState>,
+        peer: SocketAddr,
+        begin: &access::BeginResponse,
+        key: &Ed25519KeyPair,
+        client_nonce: &[u8; 32],
+    ) -> Value {
+        let (status, body) = post(
+            state,
+            peer,
+            "/v1/access/challenge",
+            json!({"request_id": begin.request_id}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let challenge: access::ChallengeResponse = serde_json::from_value(body).unwrap();
+        let id = access::decode_exact::<16>(&begin.request_id).unwrap();
+        let server_nonce = access::decode_exact::<32>(&begin.server_nonce).unwrap();
+        let challenge_bytes = access::decode_exact::<32>(&challenge.server_challenge).unwrap();
+        let public_key: [u8; 32] = key.public_key().as_ref().try_into().unwrap();
+        let context = access::context_digest(
+            &begin.endpoint,
+            &[1],
+            &public_key,
+            client_nonce,
+            &server_nonce,
+            &id,
+            peer.ip(),
+            begin.expires_unix,
+        );
+        let signature = key.sign(&access::proof_payload(
+            &context,
+            &id,
+            &challenge_bytes,
+            challenge.expires_unix,
+        ));
+        json!({
+            "request_id": begin.request_id,
+            "server_challenge": challenge.server_challenge,
+            "signature": URL_SAFE_NO_PAD.encode(signature.as_ref()),
+        })
+    }
+
+    #[tokio::test]
+    async fn local_approval_is_required_and_the_grant_is_single_use() {
+        let mut state = super::tests::state(false);
+        Arc::get_mut(&mut state).unwrap().access = Arc::new(access::AccessManager::new(
+            "https://127.0.0.1:8443".into(),
+            vec![1],
+            unix_now() + 60,
+            Instant::now() + Duration::from_secs(60),
+        ));
+        state.access.set_enabled(true);
+        let peer: SocketAddr = "127.0.0.1:32100".parse().unwrap();
+        let other_peer: SocketAddr = "127.0.0.2:32101".parse().unwrap();
+        let key = Ed25519KeyPair::from_seed_unchecked(&[9; 32]).unwrap();
+        let client_nonce = [7; 32];
+        let begin_body = json!({
+            "client_public_key": URL_SAFE_NO_PAD.encode(key.public_key().as_ref()),
+            "client_nonce": URL_SAFE_NO_PAD.encode(client_nonce),
+            "label": "test agent",
+        });
+
+        let origin_request = Request::builder()
+            .method(Method::POST)
+            .uri("/v1/access/request")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::ORIGIN, "https://example.invalid")
+            .extension(ConnectInfo(peer))
+            .body(Body::from(begin_body.to_string()))
+            .unwrap();
+        assert_eq!(
+            router(state.clone())
+                .oneshot(origin_request)
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert!(state.access.pending_views().is_empty());
+
+        for authorization in [None, Some("Bearer wrong")] {
+            let mut request = Request::builder().uri("/v1/info");
+            if let Some(value) = authorization {
+                request = request.header(header::AUTHORIZATION, value);
+            }
+            assert_eq!(
+                router(state.clone())
+                    .oneshot(request.body(Body::empty()).unwrap())
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::UNAUTHORIZED
+            );
+        }
+
+        let (status, body) = post(state.clone(), peer, "/v1/access/request", begin_body).await;
+        assert_eq!(status, StatusCode::OK);
+        let begin: access::BeginResponse = serde_json::from_value(body).unwrap();
+        assert_eq!(state.access.pending_views().len(), 1);
+        let signed = signed_poll(state.clone(), peer, &begin, &key, &client_nonce).await;
+        let (status, _) = post(state.clone(), other_peer, "/v1/access/poll", signed.clone()).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, body) = post(state.clone(), peer, "/v1/access/poll", signed).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["status"], "pending");
+        assert!(body.get("connection").is_none());
+
+        // The decision is issued only through the local UI path, never through HTTP.
+        state.access.decide(&begin.request_id, true).unwrap();
+        tokio::time::sleep(Duration::from_millis(2100)).await;
+        let signed = signed_poll(state.clone(), peer, &begin, &key, &client_nonce).await;
+        let (status, body) = post(state.clone(), peer, "/v1/access/poll", signed.clone()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["status"], "approved");
+        assert_eq!(body["connection"]["token"], "test-token");
+        let (status, _) = post(state, peer, "/v1/access/poll", signed).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }

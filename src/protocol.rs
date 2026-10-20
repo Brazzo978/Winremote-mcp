@@ -5,7 +5,7 @@ pub const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
 pub const MAX_REQUEST_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_TIMEOUT_SECS: u64 = 120;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Connection {
     pub version: u32,

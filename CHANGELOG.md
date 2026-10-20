@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 (in sviluppo)
+
+- Finestra Win32 con QR e invito testuale, copia, esportazione PNG privata, scadenza e arresto.
+- Connessione MCP da PNG/JPEG locale con decoder integrato e rifiuto di inviti ambigui.
+- Richiesta tramite IP e Approva/Rifiuta sul PC Windows, senza password condivisa manualmente.
+- Consenso legato a certificato TLS osservato e chiave Ed25519 temporanea; challenge monouso e limiti alle richieste.
+- Tre nuovi strumenti MCP; connessione precedente conservata in caso di errore e finalizzazione ritentabile.
+
 ## 0.5.1 — compatibilità Windows legacy e avvisi connessione
 
 - Build dedicata Windows 7 x64 con std Rust ricompilata e runtime C statico.

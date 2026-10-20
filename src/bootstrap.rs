@@ -27,7 +27,7 @@ pub async fn default_host() -> Result<()> {
         eprintln!(
             "Starting Windows bridge on {bind}:8443. Close the console or press Ctrl+C to stop."
         );
-        run_host(SocketAddr::new(bind, 8443), 3600, true).await
+        run_host_with_ui(SocketAddr::new(bind, 8443), 3600, true, true).await
     }
 }
 
@@ -45,13 +45,22 @@ fn discover_lan_ip() -> Result<IpAddr> {
 }
 
 pub async fn run_host(bind: SocketAddr, ttl_secs: u64, require_admin: bool) -> Result<()> {
+    run_host_with_ui(bind, ttl_secs, require_admin, false).await
+}
+
+pub async fn run_host_with_ui(
+    bind: SocketAddr,
+    ttl_secs: u64,
+    require_admin: bool,
+    show_ui: bool,
+) -> Result<()> {
     #[cfg(windows)]
     let _firewall = if !bind.ip().is_loopback() && platform::is_elevated()? {
         Some(FirewallGuard::create(bind)?)
     } else {
         None
     };
-    host::run(bind, ttl_secs, require_admin).await
+    host::run_with_ui(bind, ttl_secs, require_admin, show_ui).await
 }
 
 #[cfg(windows)]

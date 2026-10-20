@@ -1,3 +1,18 @@
+# Verifiche locali 0.6.0
+
+Prove su Windows moderno, eseguite il 20 ottobre 2026 con toolchain Rust gnullvm/LLVM-MinGW e il nuovo host e client MCP reali su loopback. Non sono state usate approvazioni HTTP di test o bypass della finestra.
+
+- Formattazione e Clippy con warning negati: passati.
+- Suite Rust: 65 test passati, inclusi QR, firma Ed25519, nonce monouso, contesto alterato, autorizzazione delle route, cache e file privati.
+- Smoke HTTPS/MCP: passato, con pairing testuale, autenticazione, Origin, PowerShell, screenshot, file oltre 8 MiB, checksum, timeout e pulizia dei processi.
+- Smoke della finestra: passato. QR letto da screenshot reale; Salva PNG attraverso il dialogo Windows e collegamento dal file esportato; codice di confronto identico sui due lati; Approva disabilitato prima della conferma; consenso, rifiuto, comando autenticato, Stop, X e scadenza.
+- Scadenza durante il dialogo modale Salva PNG: chiusura regolare senza crash.
+- Input desktop su finestra dedicata: passati click, doppio click, scroll, Unicode, tasti, modificatori e screenshot finale.
+
+Il catalogo MCP contiene 21 strumenti. Le fixture usano soltanto loopback e cartelle temporanee e rimuovono processi e credenziali di prova. Il test della finestra e aggiunto anche alla CI, con segnalazione esplicita se la UI non e disponibile.
+
+La build Windows 7 usa una toolchain distinta e audit PE; l'esito della CI non prova il funzionamento della nuova UI su un vero Windows 7 o Server 2012 R2. La nuova versione non e stata ancora provata su quei sistemi reali.
+
 # Verifiche 0.5.1
 
 I nuovi controlli includono API DPI assente, fallback V1, ripristino contesto, capacità legacy e ciclo di vita della regola firewall COM. La pipeline aggiunge compilazione del target Windows 7 con std ricompilata, controllo PE e test sul runner moderno. Per risultati e limiti consulta [compatibilità](compatibility.md) e [CI](https://github.com/Brazzo978/Winremote-mcp/actions). Prima prova Server 2012 R2 completata: avvio, pairing, PowerShell 4 elevata, desktop disabilitato e trasferimento di 2 MiB + 67 byte con SHA-256 identico fra sorgente, server e download. La build successiva corregge output Unicode/cwd e aggiunge notifiche console. Windows 7 resta da verificare sul sistema effettivo.

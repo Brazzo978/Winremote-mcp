@@ -157,6 +157,15 @@ pub fn verify_client(
     )
 }
 
+pub fn format_short_invite(address: std::net::SocketAddr, code: &str) -> Result<String> {
+    ensure!(valid_code(code), "invalid pairing code");
+    Ok(match address {
+        std::net::SocketAddr::V4(addr) if addr.port() == 8443 => format!("{}:{code}", addr.ip()),
+        std::net::SocketAddr::V4(addr) => format!("{}:{}:{code}", addr.ip(), addr.port()),
+        std::net::SocketAddr::V6(addr) => format!("[{}]:{}:{code}", addr.ip(), addr.port()),
+    })
+}
+
 pub fn parse_short_invite(input: &str) -> Result<(String, String)> {
     let input = input.trim();
     let (address, code) = input
