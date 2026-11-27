@@ -1,6 +1,6 @@
 # Guida rapida
 
-Winremote-mcp collega due PC Windows: il **PC controllato**, su cui lavori a distanza, e il **PC dell'agente**, su cui gira Codex. Copia **lo stesso EXE** su entrambi, per esempio in C:\Tools\Winremote-mcp\winremote-mcp.exe. La release scaricabile è ancora 0.5.1; QR e approvazione locale sono nel sorgente 0.6.0 e richiedono una build aggiornata su entrambi i PC. La compatibilità dei nuovi percorsi con Windows 7 e Server 2012 R2 effettivi resta da verificare. Le due macchine devono potersi raggiungere in rete; sul PC controllato serve una sessione interattiva per la finestra di consenso e per screenshot/input.
+Winremote-mcp collega due PC Windows: il **PC controllato**, su cui lavori a distanza, e il **PC dell'agente**, su cui gira Codex. Copia **lo stesso EXE** su entrambi, per esempio in C:\Tools\Winremote-mcp\winremote-mcp.exe. La release scaricabile 0.6.0 include QR e approvazione locale; aggiorna entrambi i PC alla stessa versione. La compatibilità dei nuovi percorsi con Windows 7 e Server 2012 R2 effettivi resta da verificare. Le due macchine devono potersi raggiungere in rete; sul PC controllato serve una sessione interattiva per la finestra di consenso e per screenshot/input.
 
 ## 1. Avvia il PC controllato
 

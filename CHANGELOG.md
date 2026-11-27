@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0 (in sviluppo)
+## 0.6.0 — QR e approvazione locale (27 novembre 2026)
 
 - Finestra Win32 con QR e invito testuale, copia, esportazione PNG privata, scadenza e arresto.
 - Connessione MCP da PNG/JPEG locale con decoder integrato e rifiuto di inviti ambigui.

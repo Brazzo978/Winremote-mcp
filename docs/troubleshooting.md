@@ -1,6 +1,6 @@
 # Problemi comuni
 
-Prima di diagnosticare il bridge, verifica che **lo stesso EXE aggiornato** sia presente sul PC controllato e sul PC dell'agente. Per QR e approvazione locale serve il sorgente 0.6.0 compilato su entrambi; la release scaricabile 0.5.1 non include queste funzioni. Riavvia il processo MCP dopo l'aggiornamento per caricare il nuovo catalogo. Tieni aperta la console del bridge e usa un invito generato dall'avvio corrente. Per la configurazione iniziale vedi la [guida rapida](getting-started.md).
+Prima di diagnosticare il bridge, verifica che **lo stesso EXE aggiornato** sia presente sul PC controllato e sul PC dell'agente. Per QR e approvazione locale installa la release 0.6.0 su entrambi i PC. Riavvia il processo MCP dopo l'aggiornamento per caricare il nuovo catalogo. Tieni aperta la console del bridge e usa un invito generato dall'avvio corrente. Per la configurazione iniziale vedi la [guida rapida](getting-started.md).
 
 | Sintomo | Controllo e rimedio |
 |---|---|
@@ -20,4 +20,4 @@ Prima di diagnosticare il bridge, verifica che **lo stesso EXE aggiornato** sia 
 
 La connessione salvata sul PC dell'agente contiene credenziali temporanee: trattala come file privato. `bridge_connect`, `bridge_connect_qr` e l'accesso approvato sostituiscono la connessione solo dopo la verifica del nuovo host; il comando manuale `pair` non sovrascrive un file esistente. Spegnere **Ricevi richieste di accesso** elimina le richieste in attesa, ma non revoca i client già connessi: condividono il bearer della sessione. Per revocarli tutti arresta il bridge o attendi la scadenza; la revoca selettiva non è disponibile. Se il bridge è scaduto, riavvialo sul PC controllato. Per limiti e argomenti completi consulta il [README](../README.md).
 
-La release 0.5.0 richiede Windows moderno. L'errore di avvio `SetThreadDpiAwarenessContext / Entry Point Not Found` su Server 2012 R2 deriva da un import diretto dell'API: usa la build Windows 7 della 0.5.1. Sui sistemi legacy screenshot e input sono disabilitati e `windows_info` ne spiega il motivo; comandi e file restano le capacità previste. Vedi [compatibilità](compatibility.md).
+La release 0.5.0 richiede Windows moderno. L'errore di avvio `SetThreadDpiAwarenessContext / Entry Point Not Found` su Server 2012 R2 deriva da un import diretto dell'API: usa la build Windows 7 della 0.6.0. Sui sistemi legacy screenshot e input sono disabilitati e `windows_info` ne spiega il motivo; comandi e file restano le capacità previste. Vedi [compatibilità](compatibility.md).

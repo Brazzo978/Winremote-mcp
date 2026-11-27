@@ -2,15 +2,15 @@
 
 Bridge Rust portabile per esporre temporaneamente una macchina Windows a Codex o a un altro agente tramite MCP.
 
-**Avvio sulla macchina da controllare:** nel sorgente 0.6.0, doppio clic su `winremote-mcp.exe`, consenso UAC e finestra nativa con QR e invito breve `IP:CODICE`; la console resta aperta. Il programma seleziona l'IPv4 della route predefinita, ascolta su TCP 8443 per un'ora e apre una regola firewall limitata a reti Private e LocalSubnet. Le capacità disponibili dipendono dalla versione di Windows; l'agente le legge con `windows_info`.
+**Avvio sulla macchina da controllare:** con la 0.6.0, doppio clic su `winremote-mcp.exe`, consenso UAC e finestra nativa con QR e invito breve `IP:CODICE`; la console resta aperta. Il programma seleziona l'IPv4 della route predefinita, ascolta su TCP 8443 per un'ora e apre una regola firewall limitata a reti Private e LocalSubnet. Le capacità disponibili dipendono dalla versione di Windows; l'agente le legge con `windows_info`.
 
 **Sulla macchina dell'agente:** lo stesso binario esegue un adattatore MCP locale su stdio. Si configura una volta in Codex; il pairing salva una connessione temporanea in un file privato. Non servono account Windows remoti né OpenSSH.
 
 ## Download e avvio rapido
 
-La release pubblicata è ancora [v0.5.1](https://github.com/Brazzo978/Winremote-mcp/releases/tag/v0.5.1). Contiene le funzioni precedenti, ma non QR o approvazione locale. Il sorgente 0.6.0 aggiunge queste funzioni: per usarle serve aggiornare sia host sia client MCP e riavviare il client per caricare il nuovo catalogo. Il pacchetto della 0.5.1 contiene EXE, guide, licenza, configurazioni di esempio e checksum.
+Scarica [v0.6.0](https://github.com/Brazzo978/Winremote-mcp/releases/tag/v0.6.0), con finestra QR e approvazione locale. Aggiorna sia host sia client MCP e riavvia il client per caricare i 21 strumenti. La release include EXE portabile, pacchetto ZIP con guide, licenza, configurazioni di esempio e checksum SHA-256.
 
-1. Copia l'EXE sul PC Windows da controllare, avvialo e conferma UAC. Nel sorgente 0.6.0 lascia aperte console e finestra QR.
+1. Copia l'EXE sul PC Windows da controllare, avvialo e conferma UAC. Con la 0.6.0 lascia aperte console e finestra QR.
 2. Sul PC Windows dell'agente, copia lo stesso EXE in un percorso stabile e registra il client MCP.
 3. Nella 0.6.0 passa l'invito per `bridge_connect`, un'immagine PNG/JPEG locale per `bridge_connect_qr`, oppure il solo IP per chiedere accesso con approvazione sul PC Windows.
 4. L'agente verifica le capacità con `windows_info`. Chiudi il bridge con Ctrl+C, la X della finestra o **Arresta bridge** al termine.
@@ -21,7 +21,7 @@ Il progetto è in sviluppo: i limiti operativi riportati sotto fanno parte del c
 
 ## Compatibilità Windows
 
-Il binario portabile distribuito nella 0.5.1 è compilato per `x86_64-win7-windows-msvc`, con libreria standard Rust ricompilata e runtime C statico. Windows 7 x64 resta il target del progetto; la nuova UI e i nuovi percorsi 0.6.0 richiedono ancora verifica su Windows 7 e Server 2012 R2 effettivi.
+Il binario portabile distribuito nella 0.6.0 è compilato per `x86_64-win7-windows-msvc`, con libreria standard Rust ricompilata e runtime C statico. Windows 7 x64 resta il target del progetto; la nuova UI e i nuovi percorsi 0.6.0 richiedono ancora verifica su Windows 7 e Server 2012 R2 effettivi.
 
 | Sistema | PowerShell e file | Screenshot e input |
 |---|---|---|
@@ -29,11 +29,11 @@ Il binario portabile distribuito nella 0.5.1 è compilato per `x86_64-win7-windo
 | Windows 8/8.1 / Server 2012/2012 R2 | Build dedicata, prova sul sistema da completare | Disabilitati |
 | Windows 10 da 1607 / Server 2016 e successivi | Verificati su Windows moderno | Disponibili con sessione interattiva sbloccata |
 
-`windows_info` riporta `desktop_supported`, `desktop_unavailable_reason` e le sole capacità disponibili per il sistema. Il catalogo MCP del sorgente 0.6.0 ha 21 strumenti. Su un host legacy, le chiamate desktop restituiscono un errore esplicito e gli strumenti per comandi/file continuano a essere disponibili; la finestra QR e consenso è separata dalle capacità di screenshot/input remoto.
+`windows_info` riporta `desktop_supported`, `desktop_unavailable_reason` e le sole capacità disponibili per il sistema. Il catalogo MCP della 0.6.0 ha 21 strumenti. Su un host legacy, le chiamate desktop restituiscono un errore esplicito e gli strumenti per comandi/file continuano a essere disponibili; la finestra QR e consenso è separata dalle capacità di screenshot/input remoto.
 
 Le API desktop moderne sono risolte a runtime: la loro assenza non impedisce il caricamento dell'EXE. La CI controlla anche gli import della build Windows 7 per rilevare dipendenze statiche incompatibili. Questi controlli non sostituiscono una prova sul sistema operativo di destinazione. Vedi [compatibilità e build legacy](docs/compatibility.md).
 
-## Stato del sorgente 0.6.0
+## Funzioni della 0.6.0
 
 Implementato:
 
@@ -66,7 +66,7 @@ Il server non è un ambiente isolato: PowerShell e operazioni sui file hanno i p
 
 ### 1. Macchina Windows da controllare
 
-Esegui il binario senza argomenti. Conferma il consenso UAC locale. Nel sorgente 0.6.0 si apre la finestra QR e l'invito resta anche nella console. Esempio: `192.168.1.50:Ab7!kP2@qR9#xT4?`. Il codice casuale ha 16 caratteri e contiene almeno una maiuscola, una minuscola, una cifra e un simbolo tra `- _ ! @ # $ % & * + = ?`. Con una porta diversa da 8443 il formato è `IP:PORTA:CODICE`. I due punti separano i campi e non fanno parte del codice.
+Esegui il binario senza argomenti. Conferma il consenso UAC locale. Con la 0.6.0 si apre la finestra QR e l'invito resta anche nella console. Esempio: `192.168.1.50:Ab7!kP2@qR9#xT4?`. Il codice casuale ha 16 caratteri e contiene almeno una maiuscola, una minuscola, una cifra e un simbolo tra `- _ ! @ # $ % & * + = ?`. Con una porta diversa da 8443 il formato è `IP:PORTA:CODICE`. I due punti separano i campi e non fanno parte del codice.
 
 Per scegliere esplicitamente IP e porta, usa un terminale elevato:
 
